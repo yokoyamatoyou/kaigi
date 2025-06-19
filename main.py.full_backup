@@ -1,0 +1,704 @@
+"""
+マルチAIディープリサーチツール - メインアプリケーション
+
+複数のAIモデルがペルソナを持って会議形式で議論し、
+司会AIが結果をまとめるデスクトップアプリケーション。
+"""
+
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import asyncio
+import json
+from datetime import datetime
+from pathlib import Path
+from typing import List, Dict, Optional, Any
+
+import flet as ft
+
+# 独自モジュール
+from core.models import (
+    ModelInfo, MeetingSettings, MeetingResult, ConversationEntry,
+    AIProvider, AppConfig
+)
+from core.config_manager import get_config_manager
+from core.client_factory import ClientFactory
+from core.meeting_manager import MeetingManager
+from core.document_processor import DocumentProcessor
+from core.utils import format_duration, format_timestamp, sanitize_filename
+
+# ログ設定
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+class MultiAIResearchApp:
+    """マルチAIリサーチツールのメインアプリケーションクラス"""
+    
+    def __init__(self, page: ft.Page):
+        """
+        初期化
+        
+        Args:
+            page: Fletページオブジェクト
+        """
+        self.page = page
+        self.config_manager = get_config_manager()
+        self.meeting_manager = MeetingManager()
+        self.file_picker = ft.FilePicker(on_result=self._on_file_picked)
+        
+        # 状態管理
+        self.participant_models: List[ModelInfo] = []
+        self.moderator_model: Optional[ModelInfo] = None
+        self.uploaded_file_path: Optional[str] = None
+        self.current_meeting_result: Optional[MeetingResult] = None
+        
+        # UI コンポーネント
+        self._init_ui_components()
+        
+        # ページ設定
+        self._setup_page()
+        
+        # レイアウト構築
+        self._build_layout()
+        
+        logger.info("MultiAIResearchApp 初期化完了")
+    
+    def _setup_page(self):
+        """ページの基本設定"""
+        self.page.title = self.config_manager.config.window_title
+        self.page.window_width = self.config_manager.config.window_width
+        self.page.window_height = self.config_manager.config.window_height
+        self.page.window_min_width = 800
+        self.page.window_min_height = 600
+        self.page.theme_mode = ft.ThemeMode.LIGHT
+        self.page.scroll = ft.ScrollMode.ADAPTIVE
+        
+        # ファイルピッカーを追加
+        self.page.overlay.append(self.file_picker)
+    
+    def _init_ui_components(self):
+        """UIコンポーネントを初期化"""
+        # API キー状態表示
+        self.api_status_text = ft.Text("APIキー確認中...", size=14)
+        
+        # 参加モデル管理
+        self.model_name_field = ft.TextField(
+            label="参加AIモデル名 (例: gpt-3.5-turbo)",
+            hint_text="モデル名を入力",
+            width=300
+        )
+        self.add_model_button = ft.IconButton(
+            icon="add",
+            tooltip="モデル追加",
+            on_click=self._add_model
+        )
+        
+        # 参加モデルリスト
+        self.models_list = ft.Column()
+        
+        # 司会モデル選択
+        self.moderator_dropdown = ft.Dropdown(
+            label="司会モデル",
+            hint_text="司会を担当するモデルを選択",
+            width=300,
+            options=[]
+        )
+        
+        # 発言回数設定
+        self.rounds_field = ft.TextField(
+            label="各AIの発言回数",
+            value="3",
+            width=150,
+            input_filter=ft.InputFilter(allow=True, regex_string=r"[0-9]")
+        )
+        
+        # 質問入力
+        self.query_field = ft.TextField(
+            label="質問/指示",
+            hint_text="AIに議論してもらいたい内容を入力",
+            multiline=True,
+            min_lines=4,
+            max_lines=4,
+            expand=True
+        )
+        
+        # ファイルアップロード
+        self.upload_button = ft.ElevatedButton(
+            text="資料ファイルを選択",
+            icon="upload_file",
+            on_click=self._on_upload_clicked
+        )
+        self.file_status_text = ft.Text("ファイルが選択されていません", size=12)
+        
+        # 会議開始ボタン
+        self.start_button = ft.ElevatedButton(
+            text="会議開始",
+            icon="play_arrow",
+            on_click=self._start_meeting,
+            style=ft.ButtonStyle(
+                bgcolor=ft.colors.PRIMARY,
+                color=ft.colors.ON_PRIMARY
+            )
+        )
+        
+        # プログレス表示
+        self.progress_ring = ft.ProgressRing(visible=False)
+        self.progress_text = ft.Text("", size=12)
+        
+        # 会話表示エリア
+        self.conversation_list = ft.ListView(
+            expand=True,
+            spacing=10,
+            padding=ft.padding.all(10),
+            auto_scroll=True
+        )
+        
+        # 結果表示エリア
+        self.result_text = ft.TextField(
+            label="最終結果",
+            value="",
+            multiline=True,
+            read_only=True,
+            expand=True,
+            min_lines=10
+        )
+        
+        # 保存ボタン
+        self.save_conversation_button = ft.ElevatedButton(
+            text="会話内容を保存",
+            icon="save",
+            on_click=self._save_conversation,
+            disabled=True
+        )
+        
+        self.save_result_button = ft.ElevatedButton(
+            text="結果を保存",
+            icon="save_alt",
+            on_click=self._save_result,
+            disabled=True
+        )
+        
+        # 初期化時にAPIキー状態を確認
+        self._update_api_status()
+    
+    def _build_layout(self):
+        """レイアウトを構築"""
+        # 設定エリア
+        settings_area = ft.Container(
+            content=ft.Column([
+                ft.Text("設定", size=18, weight=ft.FontWeight.BOLD),
+                
+                # APIキー状態
+                ft.Row([ft.Icon("key"), self.api_status_text]),
+                
+                ft.Divider(height=20),
+                
+                # 参加モデル設定
+                ft.Text("参加AIモデル", size=16, weight=ft.FontWeight.W_500),
+                ft.Row([
+                    self.model_name_field,
+                    self.add_model_button
+                ]),
+                self.models_list,
+                
+                ft.Divider(height=20),
+                
+                # 司会モデルと発言回数
+                ft.Row([
+                    self.moderator_dropdown,
+                    self.rounds_field
+                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                
+                ft.Divider(height=20),
+                
+                # 質問入力
+                ft.Text("質問/指示", size=16, weight=ft.FontWeight.W_500),
+                self.query_field,
+                
+                ft.Divider(height=20),
+                
+                # ファイルアップロード
+                ft.Text("資料ファイル", size=16, weight=ft.FontWeight.W_500),
+                self.upload_button,
+                self.file_status_text,
+                
+                ft.Divider(height=20),
+                
+                # 会議開始
+                ft.Row([
+                    self.start_button,
+                    self.progress_ring,
+                    self.progress_text
+                ], alignment=ft.MainAxisAlignment.START)
+            ]),
+            padding=ft.padding.all(20),
+            bgcolor=ft.colors.SURFACE_VARIANT,
+            border_radius=10
+        )
+        
+        # 会話表示エリア
+        conversation_area = ft.Container(
+            content=ft.Column([
+                ft.Text("会話内容", size=18, weight=ft.FontWeight.BOLD),
+                ft.Container(
+                    content=self.conversation_list,
+                    expand=True,
+                    border=ft.border.all(1, ft.colors.OUTLINE),
+                    border_radius=5
+                )
+            ]),
+            padding=ft.padding.all(20),
+            expand=True
+        )
+        
+        # 結果表示エリア
+        result_area = ft.Container(
+            content=ft.Column([
+                ft.Text("最終結果", size=18, weight=ft.FontWeight.BOLD),
+                self.result_text,
+                ft.Row([
+                    self.save_conversation_button,
+                    self.save_result_button
+                ], alignment=ft.MainAxisAlignment.CENTER)
+            ]),
+            padding=ft.padding.all(20),
+            expand=True
+        )
+        
+        # メインレイアウト
+        main_content = ft.Row([
+            # 左側：設定エリア
+            ft.Container(
+                content=settings_area,
+                width=400,
+                expand=False
+            ),
+            
+            # 右側：会話と結果
+            ft.Container(
+                content=ft.Column([
+                    conversation_area,
+                    result_area
+                ], expand=True),
+                expand=True
+            )
+        ], expand=True)
+        
+        self.page.add(main_content)
+        self.page.update()
+    
+    def _update_api_status(self):
+        """APIキーの状態を更新"""
+        status_parts = []
+        api_validation = self.config_manager.validate_api_keys()
+        
+        for provider, is_configured in api_validation.items():
+            status_icon = "✅" if is_configured else "❌"
+            status_parts.append(f"{status_icon} {provider.value}")
+        
+        self.api_status_text.value = " | ".join(status_parts)
+        self.api_status_text.update()
+    
+    async def _add_model(self, e):
+        """参加モデルを追加"""
+        model_name = self.model_name_field.value.strip()
+        if not model_name:
+            self._show_snack_bar("モデル名を入力してください")
+            return
+        
+        # プロバイダーを推定
+        provider = self._detect_provider(model_name)
+        if not provider:
+            self._show_snack_bar("サポートされていないモデルです")
+            return
+        
+        # APIキーがあるかチェック
+        if not self.config_manager.is_api_key_configured(provider):
+            self._show_snack_bar(f"{provider.value} のAPIキーが設定されていません")
+            return
+        
+        # 既に追加されているかチェック
+        if any(model.name == model_name for model in self.participant_models):
+            self._show_snack_bar("既に追加されているモデルです")
+            return
+        
+        # 最大数チェック
+        if len(self.participant_models) >= 5:
+            self._show_snack_bar("参加モデルは最大5つまでです")
+            return
+        
+        # モデル情報を作成
+        model_info = ModelInfo(
+            name=model_name,
+            provider=provider,
+            persona="汎用的なアシスタント",
+            temperature=self.config_manager.config.default_temperature,
+            max_tokens=self.config_manager.config.default_max_tokens
+        )
+        
+        self.participant_models.append(model_info)
+        self._update_models_list()
+        self._update_moderator_options()
+        
+        # 入力フィールドをクリア
+        self.model_name_field.value = ""
+        self.model_name_field.update()
+        
+        self._show_snack_bar(f"{model_name} を追加しました")
+    
+    def _detect_provider(self, model_name: str) -> Optional[AIProvider]:
+        """モデル名からプロバイダーを推定"""
+        model_lower = model_name.lower()
+        
+        if "gpt" in model_lower or "openai" in model_lower:
+            return AIProvider.OPENAI
+        elif "claude" in model_lower:
+            return AIProvider.CLAUDE
+        elif "gemini" in model_lower:
+            return AIProvider.GEMINI
+        
+        return None
+    
+    def _update_models_list(self):
+        """参加モデルリストを更新"""
+        self.models_list.controls.clear()
+        
+        for i, model in enumerate(self.participant_models):
+            model_card = ft.Card(
+                content=ft.Container(
+                    content=ft.Column([
+                        ft.Row([
+                            ft.Text(
+                                f"{model.name} ({model.provider.value})",
+                                weight=ft.FontWeight.BOLD
+                            ),
+                            ft.IconButton(
+                                icon="delete",
+                                tooltip="削除",
+                                on_click=lambda e, idx=i: self._remove_model(idx)
+                            )
+                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        
+                        ft.TextField(
+                            label="ペルソナ",
+                            value=model.persona,
+                            multiline=True,
+                            min_lines=2,
+                            max_lines=3,
+                            on_change=lambda e, idx=i: self._update_persona(idx, e.control.value)
+                        ),
+                        
+                        ft.Slider(
+                            label="温度",
+                            value=model.temperature,
+                            min=0,
+                            max=2,
+                            divisions=20,
+                            on_change=lambda e, idx=i: self._update_temperature(idx, e.control.value)
+                        )
+                    ]),
+                    padding=ft.padding.all(10)
+                )
+            )
+            self.models_list.controls.append(model_card)
+        
+        self.models_list.update()
+    
+    def _remove_model(self, index: int):
+        """参加モデルを削除"""
+        if 0 <= index < len(self.participant_models):
+            removed_model = self.participant_models.pop(index)
+            self._update_models_list()
+            self._update_moderator_options()
+            self._show_snack_bar(f"{removed_model.name} を削除しました")
+    
+    def _update_persona(self, index: int, persona: str):
+        """ペルソナを更新"""
+        if 0 <= index < len(self.participant_models):
+            self.participant_models[index].persona = persona
+    
+    def _update_temperature(self, index: int, temperature: float):
+        """温度を更新"""
+        if 0 <= index < len(self.participant_models):
+            self.participant_models[index].temperature = temperature
+    
+    def _update_moderator_options(self):
+        """司会モデルの選択肢を更新"""
+        self.moderator_dropdown.options.clear()
+        
+        for model in self.participant_models:
+            self.moderator_dropdown.options.append(
+                ft.dropdown.Option(
+                    key=model.name,
+                    text=f"{model.name} ({model.provider.value})"
+                )
+            )
+        
+        # デフォルトで最初のモデルを選択
+        if self.participant_models and not self.moderator_dropdown.value:
+            self.moderator_dropdown.value = self.participant_models[0].name
+        
+        self.moderator_dropdown.update()
+    
+    async def _on_upload_clicked(self, e):
+        """ファイルアップロードボタンクリック"""
+        await self.file_picker.pick_files_async(
+            dialog_title="資料ファイルを選択",
+            file_type=ft.FilePickerFileType.CUSTOM,
+            allowed_extensions=["docx", "pdf"]
+        )
+    
+    async def _on_file_picked(self, e: ft.FilePickerResultEvent):
+        """ファイル選択時の処理"""
+        if e.files:
+            file = e.files[0]
+            self.uploaded_file_path = file.path
+            self.file_status_text.value = f"選択済み: {file.name} ({file.size / 1024 / 1024:.1f}MB)"
+            self.file_status_text.color = ft.colors.GREEN
+        else:
+            self.uploaded_file_path = None
+            self.file_status_text.value = "ファイルが選択されていません"
+            self.file_status_text.color = None
+        
+        self.file_status_text.update()
+    
+    async def _start_meeting(self, e):
+        """会議を開始"""
+        # バリデーション
+        if not self.participant_models:
+            self._show_snack_bar("参加モデルを1つ以上追加してください")
+            return
+        
+        if not self.moderator_dropdown.value:
+            self._show_snack_bar("司会モデルを選択してください")
+            return
+        
+        if not self.query_field.value.strip():
+            self._show_snack_bar("質問/指示を入力してください")
+            return
+        
+        # UI を処理中状態に変更
+        self._set_ui_processing(True)
+        
+        try:
+            # 司会モデルを取得
+            moderator_model = None
+            for model in self.participant_models:
+                if model.name == self.moderator_dropdown.value:
+                    moderator_model = model
+                    break
+            
+            if not moderator_model:
+                raise ValueError("司会モデルが見つかりません")
+            
+            # 会議設定を作成
+            settings = MeetingSettings(
+                participant_models=self.participant_models.copy(),
+                moderator_model=moderator_model,
+                rounds_per_ai=int(self.rounds_field.value or 3),
+                user_query=self.query_field.value.strip(),
+                document_path=self.uploaded_file_path
+            )
+            
+            # 会議マネージャーのコールバックを設定
+            self.meeting_manager.on_statement_added = self._on_statement_added
+            self.meeting_manager.on_phase_changed = self._on_phase_changed
+            
+            # 会話表示をクリア
+            self.conversation_list.controls.clear()
+            self.conversation_list.update()
+            
+            # 会議を実行
+            result = await self.meeting_manager.run_meeting(
+                settings,
+                progress_callback=self._on_progress_update
+            )
+            
+            # 結果を保存
+            self.current_meeting_result = result
+            
+            # 結果を表示
+            self.result_text.value = result.final_summary
+            self.result_text.update()
+            
+            # 保存ボタンを有効化
+            self.save_conversation_button.disabled = False
+            self.save_result_button.disabled = False
+            self.save_conversation_button.update()
+            self.save_result_button.update()
+            
+            self._show_snack_bar(
+                f"会議完了！所要時間: {format_duration(result.duration_seconds)}, "
+                f"使用トークン: {result.total_tokens_used}"
+            )
+            
+        except Exception as ex:
+            logger.error(f"会議実行エラー: {ex}")
+            self._show_snack_bar(f"会議実行エラー: {str(ex)}")
+        
+        finally:
+            # UI を通常状態に戻す
+            self._set_ui_processing(False)
+    
+    def _set_ui_processing(self, processing: bool):
+        """UIの処理中状態を設定"""
+        self.start_button.disabled = processing
+        self.query_field.disabled = processing
+        self.upload_button.disabled = processing
+        self.progress_ring.visible = processing
+        
+        if processing:
+            self.progress_text.value = "会議を開始しています..."
+        else:
+            self.progress_text.value = ""
+        
+        self.start_button.update()
+        self.query_field.update()
+        self.upload_button.update()
+        self.progress_ring.update()
+        self.progress_text.update()
+    
+    def _on_statement_added(self, entry: ConversationEntry):
+        """発言が追加された時の処理"""
+        # 発言カードを作成
+        statement_card = ft.Card(
+            content=ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        ft.Text(
+                            f"{entry.speaker}",
+                            weight=ft.FontWeight.BOLD,
+                            color=ft.colors.PRIMARY
+                        ),
+                        ft.Text(
+                            f"({entry.persona})",
+                            size=12,
+                            color=ft.colors.OUTLINE
+                        ),
+                        ft.Text(
+                            f"ラウンド{entry.round_number}",
+                            size=10,
+                            color=ft.colors.OUTLINE
+                        )
+                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                    
+                    ft.Text(
+                        entry.content,
+                        size=14,
+                        selectable=True
+                    ),
+                    
+                    ft.Text(
+                        format_timestamp(entry.timestamp),
+                        size=10,
+                        color=ft.colors.OUTLINE
+                    )
+                ]),
+                padding=ft.padding.all(10)
+            )
+        )
+        
+        self.conversation_list.controls.append(statement_card)
+        self.conversation_list.update()
+    
+    def _on_phase_changed(self, phase: str):
+        """会議フェーズが変更された時の処理"""
+        phase_messages = {
+            "running": "会議を進行中...",
+            "summarizing": "最終要約を生成中...",
+            "completed": "会議完了",
+            "error": "エラーが発生しました"
+        }
+        
+        message = phase_messages.get(phase, f"フェーズ: {phase}")
+        self.progress_text.value = message
+        self.progress_text.update()
+    
+    def _on_progress_update(self, phase: str, current: int, total: int):
+        """進行状況更新時の処理"""
+        if phase == "discussing":
+            self.progress_text.value = f"議論中 - ラウンド {current}/{total}"
+            self.progress_text.update()
+    
+    async def _save_conversation(self, e):
+        """会話内容を保存"""
+        if not self.current_meeting_result:
+            self._show_snack_bar("保存する会話内容がありません")
+            return
+        
+        # ファイル名を生成
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = sanitize_filename(f"conversation_{timestamp}.txt")
+        
+        # 会話内容を整形
+        lines = []
+        lines.append("=== マルチAI会議 会話ログ ===")
+        lines.append(f"日時: {format_timestamp(datetime.now())}")
+        lines.append(f"参加者数: {self.current_meeting_result.participants_count}")
+        lines.append(f"所要時間: {format_duration(self.current_meeting_result.duration_seconds)}")
+        lines.append(f"使用トークン: {self.current_meeting_result.total_tokens_used}")
+        lines.append("")
+        
+        for entry in self.current_meeting_result.conversation_log:
+            lines.append(f"[{format_timestamp(entry.timestamp)}] ラウンド{entry.round_number}")
+            lines.append(f"{entry.speaker} ({entry.persona}):")
+            lines.append(entry.content)
+            lines.append("")
+        
+        # ファイルに保存
+        try:
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(lines))
+            self._show_snack_bar(f"会話内容を保存しました: {filename}")
+        except Exception as ex:
+            self._show_snack_bar(f"保存エラー: {str(ex)}")
+    
+    async def _save_result(self, e):
+        """結果を保存"""
+        if not self.current_meeting_result:
+            self._show_snack_bar("保存する結果がありません")
+            return
+        
+        # ファイル名を生成
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = sanitize_filename(f"meeting_result_{timestamp}.txt")
+        
+        # 結果を整形
+        lines = []
+        lines.append("=== マルチAI会議 最終結果 ===")
+        lines.append(f"日時: {format_timestamp(datetime.now())}")
+        lines.append(f"所要時間: {format_duration(self.current_meeting_result.duration_seconds)}")
+        lines.append(f"使用トークン: {self.current_meeting_result.total_tokens_used}")
+        lines.append("")
+        lines.append("【最終要約】")
+        lines.append(self.current_meeting_result.final_summary)
+        
+        # ファイルに保存
+        try:
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(lines))
+            self._show_snack_bar(f"結果を保存しました: {filename}")
+        except Exception as ex:
+            self._show_snack_bar(f"保存エラー: {str(ex)}")
+    
+    def _show_snack_bar(self, message: str):
+        """スナックバーメッセージを表示"""
+        snack_bar = ft.SnackBar(
+            content=ft.Text(message),
+            open=True,
+            duration=3000
+        )
+        self.page.show_snack_bar(snack_bar)
+
+
+async def main(page: ft.Page):
+    """メイン関数"""
+    app = MultiAIResearchApp(page)
+
+
+if __name__ == "__main__":
+    # Fletアプリケーションを開始
+    ft.app(target=main, assets_dir="assets")

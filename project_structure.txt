@@ -1,0 +1,54 @@
+multi_ai_research_tool_flet/
+│
+├── main.py                          # (未作成) Fletアプリのエントリポイント
+│
+├── requirements.txt                 # ✅ 作成済み
+├── .env_example                     # ✅ 作成済み
+├── config.json                      # (自動生成) アプリケーション設定
+├── README.md                        # (未作成)
+│
+├── core/                           # コアロジック
+│   ├── __init__.py                  # ✅ 作成済み
+│   ├── models.py                    # ✅ 作成済み
+│   ├── config_manager.py            # ✅ 作成済み
+│   ├── utils.py                     # ✅ 作成済み
+│   ├── document_processor.py        # (未作成)
+│   ├── meeting_manager.py           # (未作成)
+│   │
+│   └── api_clients/                # AI APIクライアント
+│       ├── __init__.py              # ✅ 作成済み
+│       ├── base_client.py           # ✅ 作成済み
+│       ├── openai_client.py         # (未作成)
+│       ├── claude_client.py         # (未作成)
+│       └── gemini_client.py         # (未作成)
+│
+├── ui/                             # (オプション) UIコンポーネント
+│   ├── __init__.py                  # (未作成)
+│   ├── settings_view.py             # (未作成)
+│   ├── chat_view.py                 # (未作成)
+│   └── result_view.py               # (未作成)
+│
+├── assets/                         # (必要に応じて) アイコン・画像
+│   └── icons/                      # (未作成)
+│
+├── tests/                          # (推奨) テストファイル
+│   ├── __init__.py                  # (未作成)
+│   ├── test_config_manager.py       # (未作成)
+│   ├── test_document_processor.py   # (未作成)
+│   ├── test_api_clients.py          # (未作成)
+│   └── test_meeting_manager.py      # (未作成)
+│
+├── logs/                           # (自動生成) ログファイル格納
+│
+└── temp/                           # (自動生成) 一時ファイル格納
+
+
+現在の状況:
+✅ 作成済み: 5ファイル
+❌ 未作成: 15ファイル以上
+
+必要な__init__.pyファイル:
+✅ core/__init__.py              - 作成済み
+✅ core/api_clients/__init__.py  - 作成済み
+❌ ui/__init__.py               - 未作成 (UIモジュール用)
+❌ tests/__init__.py            - 未作成 (テストモジュール用)
