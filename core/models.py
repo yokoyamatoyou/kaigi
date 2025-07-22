@@ -1,5 +1,5 @@
 from typing import Optional, List, Dict, Any, Literal
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict, ValidationInfo
 from enum import Enum
 from datetime import datetime
 
@@ -19,8 +19,8 @@ class ModelInfo(BaseModel):
     temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="生成の温度")
     max_tokens: int = Field(default=1000, gt=0, description="最大トークン数")
 
-    @validator('persona', pre=True, always=True) # pre=Trueとalways=Trueを追加
-    def validate_persona(cls, v, values): # values引数を追加 (Pydantic v1/v2互換のため)
+    @field_validator('persona', mode='before')
+    def validate_persona(cls, v):
         if v is None or len(str(v).strip()) == 0: # vがNoneの場合も考慮
             return "汎用的なアシスタント"
         return str(v).strip()
@@ -34,7 +34,7 @@ class MeetingSettings(BaseModel):
     user_query: str = Field(..., description="ユーザーの質問・指示")
     document_path: Optional[str] = Field(default=None, description="アップロードされたドキュメントのパス")
 
-    @validator('participant_models')
+    @field_validator('participant_models')
     def validate_participants(cls, v):
         if len(v) == 0:
             raise ValueError("参加AIモデルが1つ以上必要です")
@@ -60,14 +60,14 @@ class DocumentSummary(BaseModel):
     compression_ratio: float = Field(default=0.0, description="圧縮率") # デフォルト値設定
     tokens_used: int = Field(default=0, description="要約に使用されたトークン数")
 
-    @validator('summary', always=True)
-    def _set_summary_length_if_needed(cls, v, values):
+    @field_validator('summary')
+    def _set_summary_length_if_needed(cls, v):
         return v
 
-    @validator('compression_ratio', pre=True, always=True)
-    def calculate_compression_ratio(cls, v, values):
-        original_length = values.get('original_length')
-        summary_text = values.get('summary', '')
+    @field_validator('compression_ratio', mode='before')
+    def calculate_compression_ratio(cls, v, info: ValidationInfo):
+        original_length = info.data.get('original_length')
+        summary_text = info.data.get('summary', '')
         summary_length_val = len(summary_text)
 
         if original_length and original_length > 0 and summary_length_val > 0 :
@@ -126,11 +126,10 @@ class AppConfig(BaseModel):
     prompt_max_length_warning_threshold: int = Field(default=20000, gt=0, description="この文字数を超えると警告を出すプロンプト長（最終要約時など）")
     # --- ここまで追加 ---
 
-    class Config:
-        env_prefix = "APP_"
-        # Pydantic v1: from pydantic import Extra; extra = Extra.ignore
-        # Pydantic v2:
-        extra = "ignore"
+    model_config: ConfigDict = ConfigDict(
+        env_prefix="APP_",
+        extra="ignore",
+    )
 
 
 class FileInfo(BaseModel):
