@@ -516,6 +516,8 @@ class MultiAIResearchApp:
             self.progress_text.value = f"議論中 - ラウンド {current}/{total}"
         elif phase_detail == "discussing_statement":
              self.progress_text.value = f"議論中 - {current}/{total} 発言目"
+        elif phase_detail == "moderator_summary":
+             self.progress_text.value = f"司会要約作成中 ({current}/{total})"
         self.progress_text.update()
 
     # --- _save_conversation (デバッグログ付き) ---

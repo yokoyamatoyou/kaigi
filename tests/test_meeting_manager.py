@@ -41,6 +41,17 @@ class DummyMeetingManager(MeetingManager):
         self.state.add_conversation_entry(entry)
         participant.total_statements += 1
 
+    async def _generate_round_summary(self, round_number: int):
+        entry = ConversationEntry(
+            speaker=self.moderator.name,
+            persona="summary",
+            content=f"Summary {round_number}",
+            timestamp=datetime.now(),
+            round_number=round_number,
+            model_name=self.moderator.model_info.name,
+        )
+        self.state.add_conversation_entry(entry)
+
     async def _generate_final_summary(self, user_query: str, document_summary):
         return "final summary"
 
@@ -61,7 +72,7 @@ async def test_run_meeting_basic(monkeypatch):
     manager = DummyMeetingManager()
     result = await manager.run_meeting(settings)
     assert result.participants_count == 2
-    assert len(result.conversation_log) == 2
+    assert len(result.conversation_log) == 3
     assert result.final_summary == "final summary"
     assert manager.state.phase == "completed"
 

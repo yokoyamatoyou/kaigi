@@ -342,6 +342,12 @@ class MeetingManager:
                         participant, initial_context_for_system_prompt, participant.round_count
                     )
                     await asyncio.sleep(self.app_config.api_call_delay_seconds)
+            # ラウンド終了後に司会AIによる簡潔な要約を挿入
+            if self.moderator:
+                if self.progress_callback_internal:
+                    self.progress_callback_internal("moderator_summary", current_round_label, settings.rounds_per_ai)
+                await self._generate_round_summary(current_round_label)
+                await asyncio.sleep(self.app_config.api_call_delay_seconds)
         logger.info("全議論ラウンド完了。")
 
     async def _make_participant_statement(
@@ -405,6 +411,60 @@ class MeetingManager:
             )
             self.state.add_conversation_entry(error_entry)
             if self.on_statement_added: self.on_statement_added(error_entry)
+
+    async def _generate_round_summary(self, round_number: int):
+        if not self.moderator:
+            logger.warning("ラウンド要約生成: 司会者が未設定のためスキップします。")
+            return
+        try:
+            api_conversation_history = self._prepare_conversation_history_for_api(
+                limit=self.app_config.conversation_history_limit
+            )
+            user_prompt = (
+                f"これまでの議論の要点を日本語で150文字程度にまとめてください。\n"
+                f"これはラウンド{round_number}終了時点の要約です。"
+            )
+            system_message = (
+                "あなたは会議の司会者です。現在までの議論を簡潔に整理し、次のラウンドに備えます。"
+            )
+            raw_response = await self.moderator.client.request_completion(
+                user_message=user_prompt,
+                conversation_history=api_conversation_history,
+                system_message=system_message,
+            )
+            content, tokens_this_call = self._extract_content_and_tokens(
+                self.moderator.model_info.provider, raw_response
+            )
+            self.state.add_tokens_used(tokens_this_call)
+
+            corrected_content, correction_tokens = await self._ensure_japanese_output(
+                content,
+                self.moderator.client,
+                self.moderator.model_info.provider,
+                context_for_correction="以下の要約を自然で流暢な日本語にしてください。その他の言語を含めないでください。",
+            )
+
+            entry = ConversationEntry(
+                speaker=self.moderator.name,
+                persona=f"{self.moderator.persona} (ラウンド要約)",
+                content=corrected_content,
+                timestamp=datetime.now(),
+                round_number=round_number,
+                model_name=self.moderator.model_info.name,
+            )
+            self.state.add_conversation_entry(entry)
+            if self.on_statement_added:
+                try:
+                    self.on_statement_added(entry)
+                except Exception as e:
+                    logger.error(f"on_statement_added コールバック実行エラー: {e}", exc_info=True)
+
+            total_tokens_for_summary = tokens_this_call + correction_tokens
+            logger.info(
+                f"ラウンド{round_number}要約生成成功。消費トークン: {total_tokens_for_summary}"
+            )
+        except Exception as e:
+            self._report_error(f"ラウンド{round_number}要約生成中にエラー: {e}", exc_info=True)
 
     def _build_initial_context(
         self, user_query: str, document_summary: Optional[DocumentSummary]
