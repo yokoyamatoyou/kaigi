@@ -172,6 +172,31 @@ multi_ai_research_tool_flet/
 └── assets/               # 画像・アイコン
 ```
 
+## Development
+
+Install the dependencies and test tools:
+
+```bash
+pip install -r requirements.txt
+pip install pytest pytest-asyncio
+```
+
+Run the test suite with:
+
+```bash
+pytest
+```
+
+Optional environment variables can be set as shown in `env_example.sh`:
+
+- `OPENAI_API_KEY`
+- `ANTHROPIC_API_KEY`
+- `GOOGLE_API_KEY`
+- `DEFAULT_TEMPERATURE`
+- `DEFAULT_MAX_TOKENS`
+- `DEFAULT_ROUNDS_PER_AI`
+- `LOG_LEVEL`
+
 ## ライセンス
 
 このプロジェクトはMITライセンスの下で公開されています。
