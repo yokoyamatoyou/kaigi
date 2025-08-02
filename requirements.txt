@@ -23,11 +23,11 @@ asyncio-throttle>=1.0.2  # API レート制限対応
 pydantic>=2.5.0  # データ検証用
 
 # RAG / LangChain
-faiss-cpu
-langchain
-langchain-openai
-langchain-community
-tiktoken>=0.6.0  # トークンカウント用
+faiss-cpu          # vector store for similarity search in RAG
+langchain          # framework for building RAG pipelines
+langchain-openai   # OpenAI integration for LLMs and embeddings
+langchain-community # community integrations for retrieval/tools
+tiktoken>=0.6.0    # tokenization and counting for RAG workflows
 
 
 # Testing
