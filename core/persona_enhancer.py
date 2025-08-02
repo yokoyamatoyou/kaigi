@@ -87,17 +87,25 @@ class PersonaEnhancer:
                 return response.choices[0].message.content.strip()
             except APIError as e:
                 wait_time = 2 ** (attempt - 1)
-                logger.warning(
-                    "OpenAI API error during persona enhancement (attempt %d/%d): %s",
-                    attempt,
-                    max_retries,
-                    e,
-                )
+                if attempt < max_retries:
+                    logger.warning(
+                        (
+                            "OpenAI API error during persona enhancement "
+                            "(attempt %d/%d): %s. Retrying in %d seconds."
+                        ),
+                        attempt,
+                        max_retries,
+                        e,
+                        wait_time,
+                    )
+                    time.sleep(wait_time)
+                else:
+                    logger.error(
+                        "OpenAI API error during persona enhancement: %s", e
+                    )
             except Exception:
                 # Catch-all for unexpected issues; do not retry.
                 logger.exception("ペルソナ強化中にエラー")
                 break
-            if attempt < max_retries:
-                time.sleep(wait_time)
         logger.error("Falling back to base persona after repeated failures.")
         return base_persona
