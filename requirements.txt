@@ -22,3 +22,7 @@ python-dotenv>=1.0.0  # 環境変数読み込み用
 # その他
 asyncio-throttle>=1.0.2  # API レート制限対応
 pydantic>=2.5.0  # データ検証用
+faiss-cpu
+langchain
+langchain-openai
+langchain_community

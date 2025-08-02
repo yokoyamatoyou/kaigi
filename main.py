@@ -18,6 +18,7 @@ from core.models import (
 from core.config_manager import get_config_manager
 from core.meeting_manager import MeetingManager
 from core.utils import format_duration, format_timestamp, sanitize_filename
+from core.context_manager import ContextManager
 
 import logging
 logging.basicConfig(level=logging.INFO)
@@ -28,6 +29,7 @@ class MultiAIResearchApp:
     def __init__(self, page: ft.Page):
         self.page = page
         self.config_manager = get_config_manager()
+        self.context_manager = ContextManager()
         self.meeting_manager = MeetingManager()
         self.file_picker = ft.FilePicker(on_result=self._on_file_picked)
 
@@ -92,6 +94,17 @@ class MultiAIResearchApp:
         )
         self.file_status_text = ft.Text("ファイルが選択されていません", size=12)
 
+        carry_over_options = [ft.dropdown.Option(key="none", text="なし")]
+        for ctx in self.context_manager.list_carry_overs():
+            carry_over_options.append(
+                ft.dropdown.Option(key=ctx["id"], text=ctx["display_name"])
+            )
+        self.carry_over_dropdown = ft.Dropdown(
+            label="前回の持ち越し事項を読み込む",
+            options=carry_over_options,
+            value="none",
+        )
+
         self.start_button = ft.ElevatedButton(
             text="会議開始",
             icon="play_arrow",
@@ -142,6 +155,7 @@ class MultiAIResearchApp:
                 ft.Column([self.rounds_field,], width=170),
             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
             ft.Divider(height=20),
+            self.carry_over_dropdown,
             ft.Row([
                 self.start_button, self.progress_ring, self.progress_text
             ], alignment=ft.MainAxisAlignment.START)
@@ -376,6 +390,10 @@ class MultiAIResearchApp:
         
         logger.info("会議設定の準備中...")
         result_from_manager: Optional[MeetingResult] = None
+        carry_over_context = None
+        selected_context_id = self.carry_over_dropdown.value
+        if selected_context_id and selected_context_id != "none":
+            carry_over_context = self.context_manager.load_carry_over(selected_context_id)
 
         try:
             moderator_model_info = next((m for m in self.participant_models if m.name == moderator_name_selected), None)
@@ -392,6 +410,7 @@ class MultiAIResearchApp:
                 user_query=self.query_field.value.strip(),
                 document_path=self.uploaded_file_path
             )
+            self.meeting_manager = MeetingManager(carry_over_context=carry_over_context)
             self.meeting_manager.on_statement_added = self._on_statement_added
             self.meeting_manager.on_phase_changed = self._on_phase_changed
 

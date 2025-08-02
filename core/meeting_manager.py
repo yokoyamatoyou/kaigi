@@ -16,6 +16,7 @@ from .client_factory import ClientFactory
 from .document_processor import DocumentProcessor
 from .utils import Timer, format_duration, sanitize_filename
 from .config_manager import get_config_manager
+from .context_manager import ContextManager
 
 logger = logging.getLogger(__name__)
 
@@ -47,10 +48,12 @@ class MeetingState:
         self.total_tokens_this_meeting += tokens
 
 class MeetingManager:
-    def __init__(self, document_processor: Optional[DocumentProcessor] = None):
+    def __init__(self, document_processor: Optional[DocumentProcessor] = None, carry_over_context: Optional[str] = None):
         self.config_manager = get_config_manager()
         self.app_config: AppConfig = self.config_manager.config
         self.document_processor = document_processor or DocumentProcessor(config=self.app_config)
+        self.carry_over_context = carry_over_context
+        self.context_manager = ContextManager()
         self.participants: Dict[str, ParticipantInfo] = {}
         self.moderator: Optional[ParticipantInfo] = None
         self.state = MeetingState()
@@ -482,6 +485,11 @@ class MeetingManager:
                 document_summary.summary,
                 "--- 資料要約 END ---"
             ])
+        if self.carry_over_context:
+            context_parts.extend([
+                "\n前回の会議からの持ち越し事項",
+                self.carry_over_context,
+            ])
         context_parts.append("\n各参加者は、自身の専門性や割り当てられたペルソナに基づいて、建設的な意見交換を日本語で行ってください。")
         return "\n".join(context_parts)
 
@@ -578,6 +586,10 @@ class MeetingManager:
 
             total_tokens_for_summary = tokens_this_call + correction_tokens
             logger.info(f"最終要約生成API呼び出し完了。消費トークン: {total_tokens_for_summary} (初期{tokens_this_call}, 修正{correction_tokens})")
+            match = re.search(r"## 4\. 未解決の課題と今後の検討事項\s*\n(.*?)(?=\n##|\Z)", corrected_content, re.DOTALL)
+            if match:
+                unresolved_issues = match.group(1).strip()
+                self.context_manager.save_carry_over(user_query, unresolved_issues)
             return corrected_content
 
         except Exception as e:
