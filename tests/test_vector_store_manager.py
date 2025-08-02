@@ -61,3 +61,11 @@ def test_save_and_load(tmp_path):
     )
     results = new_manager.get_relevant_documents("hello", k=1)
     assert results == ["hello world"]
+
+
+def test_create_from_text():
+    fake = FakeEmbeddings()
+    manager = VectorStoreManager(openai_api_key="test", embeddings=fake)
+    manager.create_from_text("hello world\n\nfoo bar")
+    results = manager.get_relevant_documents("hello", k=1)
+    assert results and "hello world" in results[0]
