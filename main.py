@@ -17,7 +17,12 @@ from core.models import (
 )
 from core.config_manager import get_config_manager
 from core.meeting_manager import MeetingManager
-from core.utils import format_duration, format_timestamp, sanitize_filename
+from core.utils import (
+    format_duration,
+    format_timestamp,
+    sanitize_filename,
+    generate_file_hash,
+)
 from core.context_manager import ContextManager
 from core.vector_store_manager import VectorStoreManager
 
@@ -359,10 +364,18 @@ class MultiAIResearchApp:
             openai_key = self.config_manager.config.openai_api_key
             if openai_key:
                 self.vector_store_manager = VectorStoreManager(openai_key)
-                await asyncio.to_thread(
-                    self.vector_store_manager.create_from_file,
-                    self.uploaded_file_path,
-                )
+                store_root = Path("vector_stores")
+                file_hash = generate_file_hash(self.uploaded_file_path)
+                store_path = store_root / file_hash
+                if store_path.exists():
+                    self.vector_store_manager.load_from_disk(str(store_path))
+                else:
+                    await asyncio.to_thread(
+                        self.vector_store_manager.create_from_file,
+                        self.uploaded_file_path,
+                    )
+                    store_path.mkdir(parents=True, exist_ok=True)
+                    self.vector_store_manager.save_to_disk(str(store_path))
             else:
                 logger.warning("OpenAI APIキーが設定されていないため、ベクトルストアを構築できません。")
                 self.vector_store_manager = None

@@ -1,5 +1,7 @@
 import pytest
 from langchain.docstore.document import Document
+from langchain_community.vectorstores import FAISS
+from langchain.embeddings.base import Embeddings
 
 from core.vector_store_manager import VectorStoreManager
 
@@ -32,3 +34,29 @@ def test_mmr_diversity_and_reproducibility():
     assert first == second  # reproducibility
     assert len(first) == 2
     assert len(set(first)) == 2  # diversity (unique items)
+
+
+class FakeEmbeddings(Embeddings):
+    """Embeddings that mark texts containing 'hello' as 1, others as 0."""
+
+    def embed_documents(self, texts):
+        return [[1.0 if "hello" in t else 0.0] for t in texts]
+
+    def embed_query(self, text):
+        return [1.0 if "hello" in text else 0.0]
+
+
+def test_save_and_load(tmp_path):
+    manager = VectorStoreManager(openai_api_key="test")
+    fake = FakeEmbeddings()
+    manager.embeddings = fake
+    texts = ["hello world", "foo bar"]
+    manager.vector_store = FAISS.from_texts(texts, embedding=fake)
+    save_path = tmp_path / "store"
+    manager.save_to_disk(str(save_path))
+
+    new_manager = VectorStoreManager(openai_api_key="test")
+    new_manager.embeddings = fake
+    new_manager.load_from_disk(str(save_path))
+    results = new_manager.get_relevant_documents("hello", k=1)
+    assert results == ["hello world"]
