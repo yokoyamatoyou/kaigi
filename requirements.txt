@@ -16,7 +16,6 @@ httpx>=0.27.0
 aiohttp>=3.9.0
 
 # ユーティリティ
-tiktoken>=0.6.0  # トークンカウント用
 python-dotenv>=1.0.0  # 環境変数読み込み用
 
 # その他
@@ -28,4 +27,5 @@ faiss-cpu
 langchain
 langchain-openai
 langchain_community
+tiktoken>=0.6.0  # トークンカウント用
 
