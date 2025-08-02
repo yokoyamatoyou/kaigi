@@ -363,13 +363,13 @@ class MultiAIResearchApp:
 
             openai_key = self.config_manager.config.openai_api_key
             if openai_key:
-                self.vector_store_manager = VectorStoreManager(openai_key)
                 store_root = Path("vector_stores")
                 file_hash = generate_file_hash(self.uploaded_file_path)
                 store_path = store_root / file_hash
-                if store_path.exists():
-                    self.vector_store_manager.load_from_disk(str(store_path))
-                else:
+                self.vector_store_manager = VectorStoreManager(
+                    openai_key, str(store_path)
+                )
+                if not self.vector_store_manager.vector_store:
                     await asyncio.to_thread(
                         self.vector_store_manager.create_from_file,
                         self.uploaded_file_path,

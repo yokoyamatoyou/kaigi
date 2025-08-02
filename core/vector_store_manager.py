@@ -1,8 +1,10 @@
 import faiss  # noqa: F401
 import numpy as np  # noqa: F401
+from pathlib import Path
 from typing import List, Optional
 
 from langchain.docstore.document import Document
+from langchain.embeddings.base import Embeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
@@ -14,8 +16,13 @@ from .document_processor import DocumentProcessor
 class VectorStoreManager:
     """ドキュメントのテキストをベクトル化し、FAISSによる高度な検索機能を提供するクラス。"""
 
-    def __init__(self, openai_api_key: str):
-        self.embeddings = OpenAIEmbeddings(
+    def __init__(
+        self,
+        openai_api_key: str,
+        persist_path: Optional[str] = None,
+        embeddings: Optional[Embeddings] = None,
+    ):
+        self.embeddings = embeddings or OpenAIEmbeddings(
             model="text-embedding-3-small", openai_api_key=openai_api_key
         )
         self.vector_store: Optional[FAISS] = None
@@ -23,6 +30,9 @@ class VectorStoreManager:
             chunk_size=1000, chunk_overlap=200
         )
         self.config_manager = ConfigManager()
+
+        if persist_path and Path(persist_path).exists():
+            self.load_from_disk(persist_path)
 
     def create_from_file(self, file_path: str):
         try:
