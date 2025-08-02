@@ -374,8 +374,7 @@ class MultiAIResearchApp:
                         self.vector_store_manager.create_from_file,
                         self.uploaded_file_path,
                     )
-                    store_path.mkdir(parents=True, exist_ok=True)
-                    self.vector_store_manager.save_to_disk(str(store_path))
+                    self.vector_store_manager.save_to_disk()
             else:
                 logger.warning("OpenAI APIキーが設定されていないため、ベクトルストアを構築できません。")
                 self.vector_store_manager = None
