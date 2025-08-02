@@ -64,6 +64,7 @@ class MeetingManager:
         self.participants: Dict[str, ParticipantInfo] = {}
         self.moderator: Optional[ParticipantInfo] = None
         self.state = MeetingState()
+        self._system_prompt_context: str = ""
 
         self.on_statement_added: Optional[Callable[[ConversationEntry], None]] = None
         self.on_phase_changed: Optional[Callable[[str], None]] = None
@@ -365,7 +366,7 @@ class MeetingManager:
     async def _conduct_meeting(
         self, settings: MeetingSettings, document_summary: Optional[DocumentSummary]
     ):
-        initial_context_for_system_prompt = self._build_initial_context(settings.user_query, document_summary)
+        self._system_prompt_context = self._build_initial_context(settings.user_query, document_summary)
         participant_internal_keys = list(self.participants.keys())
         current_overall_statement_num = 0
         for i in range(settings.rounds_per_ai):
@@ -383,7 +384,7 @@ class MeetingManager:
                     participant.round_count += 1
                     logger.info(f"  参加者 {participant.name} (キー: {p_key}) の発言 (AI別R{participant.round_count}, 全体{current_overall_statement_num}/{self.state.total_rounds_expected})")
                     await self._make_participant_statement(
-                        participant, initial_context_for_system_prompt, participant.round_count
+                        participant, participant.round_count
                     )
                     await asyncio.sleep(self.app_config.api_call_delay_seconds)
             # ラウンド終了後に司会AIによる簡潔な要約を挿入
@@ -395,34 +396,15 @@ class MeetingManager:
         logger.info("全議論ラウンド完了。")
 
     async def _make_participant_statement(
-        self, participant: ParticipantInfo, system_prompt_context: str, ai_specific_round_num: int
+        self, participant: ParticipantInfo, ai_specific_round_num: int
     ):
         try:
             user_prompt_for_statement = self._build_statement_prompt(participant, ai_specific_round_num)
             api_conversation_history = self._prepare_conversation_history_for_api(
                 limit=self.app_config.conversation_history_limit
             )
-            if self.vector_store_manager:
-                try:
-                    rag_chunks = self.vector_store_manager.get_relevant_documents(
-                        user_prompt_for_statement, k=3, use_mmr=True
-                    )
-                    if rag_chunks:
-                        rag_context = "\n".join(rag_chunks)
-                        user_prompt_for_statement = (
-                            "関連資料の抜粋:\n" + rag_context + "\n\n" + user_prompt_for_statement
-                        )
-                except Exception as e:
-                    logger.warning(f"RAGコンテキスト取得に失敗: {e}")
-            system_message_parts = [
-                system_prompt_context,
-                f"あなたは「{participant.persona}」という役割でこの会議に参加しています。",
-                "提供された情報とこれまでの議論を踏まえ、あなたの意見や考察を述べてください。",
-                "**最重要指示: あなたの全ての返答は、完璧に自然で流暢な日本語で記述されなければなりません。**",
-                "**他の言語（英語など）の単語、フレーズ、または構文が誤って混入した場合は、最終的な返答を生成する前に、必ずそれらを完全に適切な日本語に修正してください。**",
-                "**出力は100%日本語である必要があります。いかなる状況でも他の言語の要素を含めてはなりません。**"
-            ]
-            system_message = "\n\n".join(system_message_parts)
+            rag_context = self._get_rag_context(user_prompt_for_statement)
+            system_message = self._build_system_prompt(participant, rag_context)
             logger.debug(f"発言者: {participant.name}, AIラウンド: {ai_specific_round_num}, システムメッセージ: {system_message[:200]}...")
 
             raw_response = await participant.client.request_completion(
@@ -522,6 +504,32 @@ class MeetingManager:
         except Exception as e:
             self._report_error(f"ラウンド{round_number}要約生成中にエラー: {e}", exc_info=True)
 
+    def _get_rag_context(self, query: str) -> Optional[str]:
+        if not self.vector_store_manager:
+            return None
+        try:
+            rag_chunks = self.vector_store_manager.get_relevant_documents(
+                query, k=3, use_mmr=True
+            )
+            if rag_chunks:
+                return "\n".join(rag_chunks)
+        except Exception as e:
+            logger.warning(f"RAGコンテキスト取得に失敗: {e}")
+        return None
+
+    def _build_system_prompt(self, participant: ParticipantInfo, rag_context: Optional[str]) -> str:
+        parts = [self._system_prompt_context]
+        if rag_context:
+            parts.append("関連資料の抜粋:\n" + rag_context)
+        parts.extend([
+            f"あなたは「{participant.persona}」という役割でこの会議に参加しています。",
+            "提供された情報とこれまでの議論を踏まえ、あなたの意見や考察を述べてください。",
+            "**最重要指示: あなたの全ての返答は、完璧に自然で流暢な日本語で記述されなければなりません。**",
+            "**他の言語（英語など）の単語、フレーズ、または構文が誤って混入した場合は、最終的な返答を生成する前に、必ずそれらを完全に適切な日本語に修正してください。**",
+            "**出力は100%日本語である必要があります。いかなる状況でも他の言語の要素を含めてはなりません。**",
+        ])
+        return "\n\n".join(parts)
+
     def _build_initial_context(
         self, user_query: str, document_summary: Optional[DocumentSummary]
     ) -> str:
@@ -538,20 +546,14 @@ class MeetingManager:
                 document_summary.summary,
                 "--- 資料要約 END ---",
             ])
-        if self.vector_store_manager:
-            try:
-                rag_chunks = self.vector_store_manager.get_relevant_documents(
-                    user_query, k=3, use_mmr=True
-                )
-                if rag_chunks:
-                    context_parts.extend([
-                        "\nアップロード資料から抽出された関連情報:",
-                        "--- RAGコンテキスト START ---",
-                        *rag_chunks,
-                        "--- RAGコンテキスト END ---",
-                    ])
-            except Exception as e:
-                logger.warning(f"初期RAGコンテキスト取得に失敗: {e}")
+        rag_context = self._get_rag_context(user_query)
+        if rag_context:
+            context_parts.extend([
+                "\nアップロード資料から抽出された関連情報:",
+                "--- RAGコンテキスト START ---",
+                rag_context,
+                "--- RAGコンテキスト END ---",
+            ])
         if self.carry_over_context:
             context_parts.extend([
                 "\n前回の会議からの持ち越し事項",
