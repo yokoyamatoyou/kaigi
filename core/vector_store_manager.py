@@ -52,6 +52,19 @@ class VectorStoreManager:
             print(f"ベクトルストアの構築中にエラーが発生しました: {e}")
             self.vector_store = None
 
+    def create_from_text(self, text: str) -> None:
+        """生の文字列からベクトルストアを構築する。"""
+        try:
+            if not text.strip():
+                self.vector_store = None
+                return
+            chunks = self.text_splitter.split_text(text)
+            self.vector_store = FAISS.from_texts(chunks, embedding=self.embeddings)
+            print("ベクトルストアの構築が完了しました。")
+        except Exception as e:
+            print(f"ベクトルストアの構築中にエラーが発生しました: {e}")
+            self.vector_store = None
+
     def save_to_disk(self, path: Optional[str] = None) -> None:
         """FAISSベクトルストアをディスクに保存"""
         if not self.vector_store:
