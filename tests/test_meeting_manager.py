@@ -38,10 +38,11 @@ class DummyMeetingManager(MeetingManager):
         if not self.initialize_participants(settings):
             raise RuntimeError("failed to init participants")
         self.initial_context_built = self._build_initial_context(settings.user_query, None)
+        self._system_prompt_context = self.initial_context_built
         await self._enhance_personas(settings.user_query, None)
         for idx, key in enumerate(self.participants.keys(), start=1):
             participant = self.participants[key]
-            await self._make_participant_statement(participant, "", idx)
+            await self._make_participant_statement(participant, idx)
         if self.moderator:
             await self._generate_round_summary(1)
         final = await self._generate_final_summary(settings.user_query, None)
@@ -56,7 +57,7 @@ class DummyMeetingManager(MeetingManager):
             participants_count=len(self.participants),
         )
 
-    async def _make_participant_statement(self, participant: ParticipantInfo, system_prompt_context: str, ai_specific_round_num: int):
+    async def _make_participant_statement(self, participant: ParticipantInfo, ai_specific_round_num: int):
         entry = ConversationEntry(
             speaker=participant.name,
             persona=participant.persona,
@@ -144,4 +145,26 @@ async def test_persona_enhancement(monkeypatch):
 
     assert manager.participants["p0"].persona == "p1-enhanced"
     assert manager.moderator.persona == "moderator-enhanced"
+
+
+class DummyVectorStore:
+    def get_relevant_documents(self, query, k=3, use_mmr=True):
+        return ["chunk1", "chunk2"]
+
+
+def test_system_prompt_includes_rag_context():
+    manager = MeetingManager(vector_store_manager=DummyVectorStore())
+    manager._system_prompt_context = "base context"
+    participant = ParticipantInfo(
+        client=None,
+        name="p",
+        internal_key="p",
+        persona="persona",
+        model_info=ModelInfo(name="m", provider=AIProvider.OPENAI, persona="persona"),
+    )
+    rag = manager._get_rag_context("query")
+    system_prompt = manager._build_system_prompt(participant, rag)
+    assert "chunk1\nchunk2" in system_prompt
+    assert "関連資料の抜粋" in system_prompt
+    assert "base context" in system_prompt
 
