@@ -8,6 +8,10 @@ from core.config_manager import initialize_config_manager
 
 
 class DummyMeetingManager(MeetingManager):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.initial_context_built = None
+
     def initialize_participants(self, settings: MeetingSettings) -> bool:
         self.clear_meeting_state()
         for idx, model in enumerate(settings.participant_models):
@@ -33,6 +37,7 @@ class DummyMeetingManager(MeetingManager):
     async def run_meeting(self, settings: MeetingSettings, progress_callback=None):
         if not self.initialize_participants(settings):
             raise RuntimeError("failed to init participants")
+        self.initial_context_built = self._build_initial_context(settings.user_query, None)
         await self._enhance_personas(settings.user_query, None)
         for idx, key in enumerate(self.participants.keys(), start=1):
             participant = self.participants[key]
@@ -75,6 +80,7 @@ class DummyMeetingManager(MeetingManager):
         self.state.add_conversation_entry(entry)
 
     async def _generate_final_summary(self, user_query: str, document_summary):
+        meeting_manager.save_carry_over(user_query, "dummy unresolved")
         return "final summary"
 
 
@@ -82,6 +88,13 @@ class DummyMeetingManager(MeetingManager):
 async def test_run_meeting_basic(monkeypatch):
     monkeypatch.setenv("API_CALL_DELAY_SECONDS", "0")
     initialize_config_manager()
+    saved = {}
+
+    def fake_save(topic, issues):
+        saved["topic"] = topic
+        saved["issues"] = issues
+
+    monkeypatch.setattr(meeting_manager, "save_carry_over", fake_save)
     settings = MeetingSettings(
         participant_models=[
             ModelInfo(name="modelA", provider=AIProvider.OPENAI, persona="p1"),
@@ -91,12 +104,14 @@ async def test_run_meeting_basic(monkeypatch):
         rounds_per_ai=1,
         user_query="topic",
     )
-    manager = DummyMeetingManager()
+    manager = DummyMeetingManager(carry_over_context="previous context")
     result = await manager.run_meeting(settings)
     assert result.participants_count == 2
     assert len(result.conversation_log) == 3
     assert result.final_summary == "final summary"
     assert manager.state.phase == "completed"
+    assert "previous context" in manager.initial_context_built
+    assert saved == {"topic": "topic", "issues": "dummy unresolved"}
 
 
 class DummyEnhancer:
@@ -113,6 +128,7 @@ async def test_persona_enhancement(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "dummy")
     initialize_config_manager()
     monkeypatch.setattr(meeting_manager, "PersonaEnhancer", DummyEnhancer)
+    monkeypatch.setattr(meeting_manager, "save_carry_over", lambda *args, **kwargs: None)
 
     settings = MeetingSettings(
         participant_models=[
