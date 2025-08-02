@@ -3,6 +3,7 @@ from datetime import datetime
 
 from core.meeting_manager import MeetingManager, ParticipantInfo, ConversationEntry
 import core.meeting_manager as meeting_manager
+import core.context_manager as context_manager
 from core.models import ModelInfo, MeetingSettings, AIProvider, MeetingResult
 from core.config_manager import initialize_config_manager
 
@@ -167,4 +168,52 @@ def test_system_prompt_includes_rag_context():
     assert "chunk1\nchunk2" in system_prompt
     assert "関連資料の抜粋" in system_prompt
     assert "base context" in system_prompt
+
+
+@pytest.mark.asyncio
+async def test_carry_over_created(tmp_path, monkeypatch):
+    monkeypatch.setenv("API_CALL_DELAY_SECONDS", "0")
+    initialize_config_manager()
+
+    cm = context_manager.ContextManager(context_dir=str(tmp_path))
+    monkeypatch.setattr(context_manager, "_default_manager", cm)
+
+    class DummyClient:
+        async def request_completion(self, *args, **kwargs):
+            return None
+
+    manager = MeetingManager(document_processor=object())
+    manager.moderator = ParticipantInfo(
+        client=DummyClient(),
+        name="mod",
+        internal_key="mod",
+        persona="mod",
+        model_info=ModelInfo(name="mod", provider=AIProvider.OPENAI, persona="m"),
+    )
+
+    final_summary = (
+        "## 1. サマリー\n内容\n"
+        "## 4. 未解決の課題と今後の検討事項\n課題A\n課題B\n"
+    )
+
+    def fake_extract(provider, response):
+        return final_summary, 0
+
+    async def fake_ensure(content, client, provider, context_for_correction):
+        return content, 0
+
+    monkeypatch.setattr(manager, "_extract_content_and_tokens", fake_extract)
+    monkeypatch.setattr(manager, "_ensure_japanese_output", fake_ensure)
+    monkeypatch.setattr(manager, "_format_conversation_for_summary", lambda: "log")
+    monkeypatch.setattr(manager, "_build_summary_prompt", lambda u, c, d: "prompt")
+
+    summary = await manager._generate_final_summary("topic", None)
+    assert "未解決" in summary
+
+    files = list(tmp_path.glob("context_*.json"))
+    assert len(files) == 1
+
+    carry_overs = cm.list_carry_overs()
+    assert len(carry_overs) == 1
+    assert carry_overs[0]["id"] == files[0].name
 
