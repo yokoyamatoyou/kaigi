@@ -1,17 +1,39 @@
-from openai import OpenAI
-from typing import Dict, Optional
+from __future__ import annotations
+
+from openai import APIError, OpenAI
+from typing import Optional
 
 
 class PersonaEnhancer:
-    def __init__(self, api_key: str):
+    """Generate an enhanced persona instruction using OpenAI's Chat Completions API."""
+
+    def __init__(self, api_key: str) -> None:
+        """Create a new enhancer with an initialised OpenAI client."""
         self.client = OpenAI(api_key=api_key)
 
-    def enhance_persona(self, base_persona: str, topic: str, document_context: Optional[str]) -> str:
-        """基本ペルソナ、議題、資料コンテキストを基に、AIの思考を拡張するメタプロンプトを生成する。"""
+    def enhance_persona(
+        self,
+        base_persona: str,
+        topic: str,
+        document_context: Optional[str] = None,
+    ) -> str:
+        """Create an optimised persona prompt.
+
+        Parameters
+        ----------
+        base_persona:
+            The base persona description.
+        topic:
+            Main discussion topic.
+        document_context:
+            Optional context extracted from reference documents.
+        """
+
         system_prompt = (
-            """あなたは、AIアシスタントの役割（ペルソナ）を、最高のパフォーマンスが発揮できるようデザインする「AIアーキテクト」です。
-単なる役割設定ではなく、思考の深さ、広さ、そして独自性を引き出すための行動指針と制約事項を具体的に設計してください。
-出力は、AIアシスタントへの直接の指示（プロンプト）として使える形式で記述してください。"""
+            """あなたは、AIアシスタントの役割（ペルソナ）を、最高のパフォーマンスが発揮できるようデザインする"""
+            "「AIアーキテクト」です。\n"
+            "単なる役割設定ではなく、思考の深さ、広さ、そして独自性を引き出すための行動指針と制約事項を具体的に設計してください。\n"
+            "出力は、AIアシスタントへの直接の指示（プロンプト）として使える形式で記述してください。"
         )
 
         user_prompt = f"""
@@ -47,15 +69,18 @@ class PersonaEnhancer:
 
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4o",  # 最高性能のモデルでペルソナを設計
+                model="gpt-4o",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.7,
             )
-            return response.choices[0].message.content
+            return response.choices[0].message.content.strip()
+        except APIError as e:
+            # OpenAI API returned an error; fall back to the base persona.
+            print(f"OpenAI API error during persona enhancement: {e}")
         except Exception as e:
+            # Catch-all for unexpected issues.
             print(f"ペルソナ強化中にエラー: {e}")
-            return base_persona
-
+        return base_persona
