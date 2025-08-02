@@ -26,7 +26,7 @@ pydantic>=2.5.0  # データ検証用
 faiss-cpu
 langchain
 langchain-openai
-langchain_community
+langchain-community
 tiktoken>=0.6.0  # トークンカウント用
 
 
