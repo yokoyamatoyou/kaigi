@@ -489,6 +489,15 @@ class MultiAIResearchApp:
 
             self.save_conversation_button.update()
             self.save_result_button.update()
+            # 持ち越し事項保存後に最新のリストを再取得し、ドロップダウンを更新
+            carry_over_options = [ft.dropdown.Option(key="none", text="なし")]
+            for ctx in self.context_manager.list_carry_overs():
+                carry_over_options.append(
+                    ft.dropdown.Option(key=ctx["id"], text=ctx["display_name"])
+                )
+            self.carry_over_dropdown.options = carry_over_options
+            self.carry_over_dropdown.update()
+
             # self.page.update() # _set_ui_processingで呼ばれるので必須ではないが、ボタン状態更新のため明示しても良い
             logger.info("会議処理の finally ブロック完了。")
 
