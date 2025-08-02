@@ -28,8 +28,8 @@ def test_mmr_diversity_and_reproducibility():
     assert len(set(sim_results)) == 1  # duplicates present
 
     # MMR search should be reproducible and diverse
-    first = manager.get_relevant_documents("query", k=2, use_mmr=True)
-    second = manager.get_relevant_documents("query", k=2, use_mmr=True)
+    first = manager.get_relevant_documents("query", k=2, use_mmr=True, fetch_k=5)
+    second = manager.get_relevant_documents("query", k=2, use_mmr=True, fetch_k=5)
 
     assert first == second  # reproducibility
     assert len(first) == 2

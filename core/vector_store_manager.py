@@ -97,14 +97,33 @@ class VectorStoreManager:
             print(f"ベクトルストアの読み込みに失敗しました: {e}")
             self.vector_store = None
 
-    def get_relevant_documents(self, query: str, k: int = 5, use_mmr: bool = False) -> List[str]:
-        """クエリに関連するドキュメントのチャンクを取得する。MMR (Maximal Marginal Relevance) を使用して多様性を確保するオプションを追加。"""
+    def get_relevant_documents(
+        self,
+        query: str,
+        k: int = 5,
+        use_mmr: bool = False,
+        fetch_k: int = 20,
+    ) -> List[str]:
+        """クエリに関連するドキュメントのチャンクを取得する。
+
+        Parameters
+        ----------
+        query:
+            検索クエリ。
+        k:
+            返すドキュメント数。
+        use_mmr:
+            True の場合、Maximal Marginal Relevance 検索を使用して多様性を確保する。
+        fetch_k:
+            MMR 検索時に内部で取得する上位候補数。"""
         if not self.vector_store:
             return []
 
         if use_mmr:
             # MMR検索で、関連性と多様性を両立させる
-            docs = self.vector_store.max_marginal_relevance_search(query, k=k, fetch_k=20)
+            docs = self.vector_store.max_marginal_relevance_search(
+                query, k=k, fetch_k=fetch_k
+            )
         else:
             # 通常の類似度検索
             docs = self.vector_store.similarity_search(query, k=k)
