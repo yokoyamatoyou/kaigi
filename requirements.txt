@@ -29,3 +29,6 @@ langchain-openai
 langchain_community
 tiktoken>=0.6.0  # トークンカウント用
 
+
+# Testing
+pytest-asyncio
