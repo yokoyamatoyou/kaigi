@@ -41,6 +41,28 @@ class VectorStoreManager:
             print(f"ベクトルストアの構築中にエラーが発生しました: {e}")
             self.vector_store = None
 
+    def save_to_disk(self, path: str) -> None:
+        """FAISSベクトルストアをディスクに保存"""
+        if not self.vector_store:
+            print("保存するベクトルストアがありません。")
+            return
+        try:
+            self.vector_store.save_local(path)
+            print(f"ベクトルストアを保存しました: {path}")
+        except Exception as e:
+            print(f"ベクトルストアの保存中にエラーが発生しました: {e}")
+
+    def load_from_disk(self, path: str) -> None:
+        """ディスクからFAISSベクトルストアを読み込み"""
+        try:
+            self.vector_store = FAISS.load_local(
+                path, self.embeddings, allow_dangerous_deserialization=True
+            )
+            print(f"ベクトルストアを読み込みました: {path}")
+        except Exception as e:
+            print(f"ベクトルストアの読み込みに失敗しました: {e}")
+            self.vector_store = None
+
     def get_relevant_documents(self, query: str, k: int = 5, use_mmr: bool = False) -> List[str]:
         """クエリに関連するドキュメントのチャンクを取得する。MMR (Maximal Marginal Relevance) を使用して多様性を確保するオプションを追加。"""
         if not self.vector_store:
