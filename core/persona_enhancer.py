@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from openai import APIError, OpenAI
+import time
 from typing import Optional
+
+from openai import APIError, OpenAI
 
 
 class PersonaEnhancer:
@@ -67,20 +69,28 @@ class PersonaEnhancer:
 上記を踏まえて、このAIのための最高の「強化ペルソナ設定」を作成してください:
 """
 
-        try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.7,
-            )
-            return response.choices[0].message.content.strip()
-        except APIError as e:
-            # OpenAI API returned an error; fall back to the base persona.
-            print(f"OpenAI API error during persona enhancement: {e}")
-        except Exception as e:
-            # Catch-all for unexpected issues.
-            print(f"ペルソナ強化中にエラー: {e}")
+        max_retries = 3
+        for attempt in range(1, max_retries + 1):
+            try:
+                response = self.client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    temperature=0.7,
+                )
+                return response.choices[0].message.content.strip()
+            except APIError as e:
+                wait_time = 2 ** (attempt - 1)
+                print(
+                    f"OpenAI API error during persona enhancement (attempt {attempt}/{max_retries}): {e}"
+                )
+            except Exception as e:
+                # Catch-all for unexpected issues; do not retry.
+                print(f"ペルソナ強化中にエラー: {e}")
+                break
+            if attempt < max_retries:
+                time.sleep(wait_time)
+        print("Falling back to base persona after repeated failures.")
         return base_persona
