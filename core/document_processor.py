@@ -264,14 +264,23 @@ class DocumentProcessor:
         )
 
     def _extract_content_and_tokens(self, provider: AIProvider, response: Any) -> Tuple[str, int]:
+        """Extract text content and token usage from an AI response.
+
+        Args:
+            provider: The AI provider that generated the response.
+            response: Raw response object returned by the provider client.
+
+        Returns:
+            A tuple of the extracted content and total tokens used.
+        """
         content = ""
         tokens_used = 0
         try:
             if provider == AIProvider.OPENAI:
-                if response and hasattr(response, 'choices') and response.choices and hasattr(response.choices[0], 'message') and response.choices[0].message:
+                if response and hasattr(response, 'choices') and response.choices and response.choices[0].message:
                     content = response.choices[0].message.content or ""
                 if response and hasattr(response, 'usage') and response.usage:
-                    tokens_used = getattr(response.usage, 'total_tokens', 0) or 0
+                    tokens_used = response.usage.total_tokens or 0
             elif provider == AIProvider.CLAUDE:
                 if response and hasattr(response, 'content') and isinstance(response.content, list) and len(response.content) > 0:
                     for block in response.content:
@@ -279,7 +288,7 @@ class DocumentProcessor:
                             content = block.text
                             break
                 if response and hasattr(response, 'usage') and response.usage:
-                    tokens_used = (getattr(response.usage, 'input_tokens', 0) or 0) + (getattr(response.usage, 'output_tokens', 0) or 0)
+                    tokens_used = (response.usage.input_tokens or 0) + (response.usage.output_tokens or 0)
             elif provider == AIProvider.GEMINI:
                 if response and hasattr(response, 'candidates') and response.candidates and \
                    hasattr(response.candidates[0], 'content') and response.candidates[0].content and \
@@ -287,24 +296,34 @@ class DocumentProcessor:
                     content = "".join(part.text for part in response.candidates[0].content.parts if hasattr(part, 'text'))
 
                 if hasattr(response, 'usage_metadata') and response.usage_metadata:
-                    tokens_used = (getattr(response.usage_metadata, 'prompt_token_count', 0) or 0) + \
-                                  (getattr(response.usage_metadata, 'candidates_token_count', 0) or 0)
+                    tokens_used = (response.usage_metadata.prompt_token_count or 0) + \
+                                  (response.usage_metadata.candidates_token_count or 0)
                 elif hasattr(response, 'usage') and response.usage and hasattr(response.usage, 'total_tokens'):
-                    tokens_used = getattr(response.usage, 'total_tokens', 0) or 0
+                    tokens_used = response.usage.total_tokens or 0
                 elif hasattr(response, 'usage') and response.usage and hasattr(response.usage, 'prompt_tokens') and hasattr(response.usage, 'completion_tokens'):
-                    tokens_used = (getattr(response.usage, 'prompt_tokens', 0) or 0) + \
-                                   (getattr(response.usage, 'completion_tokens', 0) or 0)
+                    tokens_used = (response.usage.prompt_tokens or 0) + \
+                                   (response.usage.completion_tokens or 0)
                 else:
                     if not tokens_used:
-                        logger.warning(f"Geminiのレスポンスからトークン数を取得できませんでした。Response keys: {response.keys() if hasattr(response, 'keys') else type(response)}")
+                        logger.warning(
+                            f"Geminiのレスポンスからトークン数を取得できませんでした。Response keys: {response.keys() if hasattr(response, 'keys') else type(response)}"
+                        )
             else:
-                logger.warning(f"未対応のプロバイダー ({provider}) のため、コンテンツとトークン数を抽出できません。")
+                logger.warning(
+                    f"未対応のプロバイダー ({provider}) のため、コンテンツとトークン数を抽出できません。"
+                )
 
         except AttributeError as e:
-            logger.error(f"{provider.value}レスポンスのパース中にAttributeError: {e}. Response: {str(response)[:200]}", exc_info=True)
+            logger.error(
+                f"{provider.value}レスポンスのパース中にAttributeError: {e}. Response: {str(response)[:200]}",
+                exc_info=True,
+            )
             content = "[エラー: レスポンスのパースに失敗]"
         except Exception as e:
-            logger.error(f"{provider.value}レスポンスのパース中に予期せぬエラー: {e}. Response: {str(response)[:200]}", exc_info=True)
+            logger.error(
+                f"{provider.value}レスポンスのパース中に予期せぬエラー: {e}. Response: {str(response)[:200]}",
+                exc_info=True,
+            )
 
         return content, tokens_used
     
