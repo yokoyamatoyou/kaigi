@@ -111,6 +111,21 @@ class MultiAIResearchApp:
             label="前回の持ち越し事項を読み込む",
             options=carry_over_options,
             value="none",
+            on_change=self._on_carry_over_changed,
+        )
+        self.clear_carry_over_button = ft.IconButton(
+            icon="clear",
+            tooltip="Clear",
+            on_click=self._clear_carry_over,
+            visible=False,
+        )
+        self.carry_over_info_text = ft.Text("", size=12)
+        self.carry_over_banner = ft.Container(
+            content=self.carry_over_info_text,
+            bgcolor=ft.colors.AMBER_100,
+            padding=ft.padding.symmetric(vertical=5, horizontal=10),
+            border_radius=5,
+            visible=False,
         )
 
         self.start_button = ft.ElevatedButton(
@@ -163,7 +178,11 @@ class MultiAIResearchApp:
                 ft.Column([self.rounds_field,], width=170),
             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
             ft.Divider(height=20),
-            self.carry_over_dropdown,
+            ft.Row([
+                self.carry_over_dropdown,
+                self.clear_carry_over_button,
+            ]),
+            self.carry_over_banner,
             ft.Row([
                 self.start_button, self.progress_ring, self.progress_text
             ], alignment=ft.MainAxisAlignment.START)
@@ -393,6 +412,29 @@ class MultiAIResearchApp:
         self.file_status_text.update()
         self.page.update()
 
+    def _on_carry_over_changed(self, e):
+        selected = self.carry_over_dropdown.value
+        if selected and selected != "none":
+            display_name = next(
+                (opt.text for opt in self.carry_over_dropdown.options if opt.key == selected),
+                "",
+            )
+            self.carry_over_info_text.value = f"持ち越し『{display_name}』を読み込みます"
+            self.carry_over_banner.visible = True
+            self.clear_carry_over_button.visible = True
+        else:
+            self.carry_over_banner.visible = False
+            self.clear_carry_over_button.visible = False
+            self.carry_over_info_text.value = ""
+        self.carry_over_info_text.update()
+        self.carry_over_banner.update()
+        self.clear_carry_over_button.update()
+
+    def _clear_carry_over(self, e):
+        self.carry_over_dropdown.value = "none"
+        self.carry_over_dropdown.update()
+        self._on_carry_over_changed(None)
+
     async def _start_meeting(self, e):
         logger.info("会議開始ボタンクリック。UI準備中...")
         # ... (バリデーションは変更なし) ...
@@ -509,6 +551,7 @@ class MultiAIResearchApp:
                 )
             self.carry_over_dropdown.options = carry_over_options
             self.carry_over_dropdown.update()
+            self._on_carry_over_changed(None)
 
             # self.page.update() # _set_ui_processingで呼ばれるので必須ではないが、ボタン状態更新のため明示しても良い
             logger.info("会議処理の finally ブロック完了。")
