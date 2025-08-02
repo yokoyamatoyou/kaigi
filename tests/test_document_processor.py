@@ -4,6 +4,41 @@ from types import SimpleNamespace
 import pytest
 
 
+TEST_CASES = [
+    (
+        AIProvider.OPENAI,
+        SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="openai"))],
+            usage=SimpleNamespace(total_tokens=5),
+        ),
+        5,
+        "openai",
+    ),
+    (
+        AIProvider.CLAUDE,
+        SimpleNamespace(
+            content=[SimpleNamespace(text="claude")],
+            usage=SimpleNamespace(input_tokens=3, output_tokens=4),
+        ),
+        7,
+        "claude",
+    ),
+    (
+        AIProvider.GEMINI,
+        SimpleNamespace(
+            candidates=[
+                SimpleNamespace(
+                    content=SimpleNamespace(parts=[SimpleNamespace(text="gemini")])
+                )
+            ],
+            usage_metadata=SimpleNamespace(prompt_token_count=2, candidates_token_count=3),
+        ),
+        5,
+        "gemini",
+    ),
+]
+
+
 def test_extract_text_from_txt(tmp_path):
     content = "Hello world\nsecond line"
     txt_file = tmp_path / "sample.txt"
@@ -35,40 +70,21 @@ class DummyClient:
         return self._response
 
 
+@pytest.mark.parametrize(
+    "provider,response,expected_tokens,expected_content",
+    TEST_CASES,
+)
+def test_extract_content_and_tokens(provider, response, expected_tokens, expected_content):
+    processor = DocumentProcessor(AppConfig())
+    content, tokens = processor._extract_content_and_tokens(provider, response)
+    assert content == expected_content
+    assert tokens == expected_tokens
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "provider,response,expected_tokens,expected_content",
-    [
-        (
-            AIProvider.OPENAI,
-            SimpleNamespace(
-                choices=[SimpleNamespace(message=SimpleNamespace(content="openai"))],
-                usage=SimpleNamespace(total_tokens=5),
-            ),
-            5,
-            "openai",
-        ),
-        (
-            AIProvider.CLAUDE,
-            SimpleNamespace(
-                content=[SimpleNamespace(text="claude")],
-                usage=SimpleNamespace(input_tokens=3, output_tokens=4),
-            ),
-            7,
-            "claude",
-        ),
-        (
-            AIProvider.GEMINI,
-            SimpleNamespace(
-                candidates=[
-                    SimpleNamespace(content=SimpleNamespace(parts=[SimpleNamespace(text="gemini")]))
-                ],
-                usage_metadata=SimpleNamespace(prompt_token_count=2, candidates_token_count=3),
-            ),
-            5,
-            "gemini",
-        ),
-    ],
+    TEST_CASES,
 )
 async def test_summarize_document_for_meeting_with_various_providers(provider, response, expected_tokens, expected_content):
     config = AppConfig(summarization_target_tokens=10)
