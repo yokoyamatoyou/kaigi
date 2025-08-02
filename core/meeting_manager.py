@@ -16,7 +16,7 @@ from .client_factory import ClientFactory
 from .document_processor import DocumentProcessor
 from .utils import Timer, format_duration, sanitize_filename
 from .config_manager import get_config_manager
-from .context_manager import ContextManager
+from .context_manager import save_carry_over
 from .persona_enhancer import PersonaEnhancer
 
 logger = logging.getLogger(__name__)
@@ -54,7 +54,6 @@ class MeetingManager:
         self.app_config: AppConfig = self.config_manager.config
         self.document_processor = document_processor or DocumentProcessor(config=self.app_config)
         self.carry_over_context = carry_over_context
-        self.context_manager = ContextManager()
         self.participants: Dict[str, ParticipantInfo] = {}
         self.moderator: Optional[ParticipantInfo] = None
         self.state = MeetingState()
@@ -624,7 +623,7 @@ class MeetingManager:
             match = re.search(r"## 4\. 未解決の課題と今後の検討事項\s*\n(.*?)(?=\n##|\Z)", corrected_content, re.DOTALL)
             if match:
                 unresolved_issues = match.group(1).strip()
-                self.context_manager.save_carry_over(user_query, unresolved_issues)
+                save_carry_over(user_query, unresolved_issues)
             return corrected_content
 
         except Exception as e:

@@ -12,7 +12,7 @@ class ContextManager:
         if not os.path.exists(self.context_dir):
             os.makedirs(self.context_dir)
 
-    def save_carry_over(self, topic: str, unresolved_issues: str):
+    def save_carry_over(self, topic: str, unresolved_issues: str) -> None:
         """未解決の課題をJSONファイルとして保存する。"""
         if not unresolved_issues.strip():
             print("持ち越し事項がないため、保存をスキップしました。")
@@ -57,4 +57,22 @@ class ContextManager:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
             return data.get("unresolved_issues")
+
+
+_default_manager = ContextManager()
+
+
+def save_carry_over(topic: str, unresolved_issues: str) -> None:
+    """持ち越し事項を保存するモジュールレベルのラッパー。"""
+    _default_manager.save_carry_over(topic, unresolved_issues)
+
+
+def list_carry_overs() -> List[Dict[str, str]]:
+    """保存されている持ち越し事項の一覧を返す。"""
+    return _default_manager.list_carry_overs()
+
+
+def load_carry_over(context_id: str) -> Optional[str]:
+    """指定IDの持ち越し事項を読み込む。"""
+    return _default_manager.load_carry_over(context_id)
 
