@@ -19,6 +19,7 @@ from core.config_manager import get_config_manager
 from core.meeting_manager import MeetingManager
 from core.utils import format_duration, format_timestamp, sanitize_filename
 from core.context_manager import ContextManager
+from core.vector_store_manager import VectorStoreManager
 
 import logging
 logging.basicConfig(level=logging.INFO)
@@ -37,6 +38,7 @@ class MultiAIResearchApp:
         self.moderator_model: Optional[ModelInfo] = None
         self.uploaded_file_path: Optional[str] = None
         self.current_meeting_result: Optional[MeetingResult] = None
+        self.vector_store_manager: Optional[VectorStoreManager] = None
 
         self._init_ui_components()
         self._setup_page()
@@ -353,6 +355,17 @@ class MultiAIResearchApp:
             self.file_status_text.value = f"選択: {Path(file_result.name).name} ({file_size_kb:.1f}KB)"
             self.file_status_text.color = "green" # 文字列で指定
             logger.info(f"File selected: {self.uploaded_file_path}")
+
+            openai_key = self.config_manager.config.openai_api_key
+            if openai_key:
+                self.vector_store_manager = VectorStoreManager(openai_key)
+                await asyncio.to_thread(
+                    self.vector_store_manager.create_from_file,
+                    self.uploaded_file_path,
+                )
+            else:
+                logger.warning("OpenAI APIキーが設定されていないため、ベクトルストアを構築できません。")
+                self.vector_store_manager = None
         else:
             self.uploaded_file_path = None
             self.file_status_text.value = "ファイルが選択されていません"
@@ -364,7 +377,7 @@ class MultiAIResearchApp:
                  logger.info("File selection cancelled.")
             else: # その他の予期せぬケース
                  logger.warning(f"File selection failed or unexpected result: {e.files}")
-
+            self.vector_store_manager = None
         self.file_status_text.update()
         self.page.update()
 
@@ -411,7 +424,10 @@ class MultiAIResearchApp:
                 user_query=self.query_field.value.strip(),
                 document_path=self.uploaded_file_path
             )
-            self.meeting_manager = MeetingManager(carry_over_context=carry_over_context)
+            self.meeting_manager = MeetingManager(
+                vector_store_manager=self.vector_store_manager,
+                carry_over_context=carry_over_context,
+            )
             self.meeting_manager.on_statement_added = self._on_statement_added
             self.meeting_manager.on_phase_changed = self._on_phase_changed
 

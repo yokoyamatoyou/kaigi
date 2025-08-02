@@ -18,6 +18,7 @@ from .utils import Timer, format_duration, sanitize_filename
 from .config_manager import get_config_manager
 from .context_manager import save_carry_over
 from .persona_enhancer import PersonaEnhancer
+from .vector_store_manager import VectorStoreManager
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +50,16 @@ class MeetingState:
         self.total_tokens_this_meeting += tokens
 
 class MeetingManager:
-    def __init__(self, document_processor: Optional[DocumentProcessor] = None, carry_over_context: Optional[str] = None):
+    def __init__(
+        self,
+        document_processor: Optional[DocumentProcessor] = None,
+        vector_store_manager: Optional[VectorStoreManager] = None,
+        carry_over_context: Optional[str] = None,
+    ):
         self.config_manager = get_config_manager()
         self.app_config: AppConfig = self.config_manager.config
         self.document_processor = document_processor or DocumentProcessor(config=self.app_config)
+        self.vector_store_manager = vector_store_manager
         self.carry_over_context = carry_over_context
         self.participants: Dict[str, ParticipantInfo] = {}
         self.moderator: Optional[ParticipantInfo] = None
@@ -395,6 +402,18 @@ class MeetingManager:
             api_conversation_history = self._prepare_conversation_history_for_api(
                 limit=self.app_config.conversation_history_limit
             )
+            if self.vector_store_manager:
+                try:
+                    rag_chunks = self.vector_store_manager.get_relevant_documents(
+                        user_prompt_for_statement, k=3, use_mmr=True
+                    )
+                    if rag_chunks:
+                        rag_context = "\n".join(rag_chunks)
+                        user_prompt_for_statement = (
+                            "関連資料の抜粋:\n" + rag_context + "\n\n" + user_prompt_for_statement
+                        )
+                except Exception as e:
+                    logger.warning(f"RAGコンテキスト取得に失敗: {e}")
             system_message_parts = [
                 system_prompt_context,
                 f"あなたは「{participant.persona}」という役割でこの会議に参加しています。",
@@ -517,14 +536,30 @@ class MeetingManager:
                 "\n関連資料の要約は以下の通りです (この要約も日本語です):",
                 "--- 資料要約 START ---",
                 document_summary.summary,
-                "--- 資料要約 END ---"
+                "--- 資料要約 END ---",
             ])
+        if self.vector_store_manager:
+            try:
+                rag_chunks = self.vector_store_manager.get_relevant_documents(
+                    user_query, k=3, use_mmr=True
+                )
+                if rag_chunks:
+                    context_parts.extend([
+                        "\nアップロード資料から抽出された関連情報:",
+                        "--- RAGコンテキスト START ---",
+                        *rag_chunks,
+                        "--- RAGコンテキスト END ---",
+                    ])
+            except Exception as e:
+                logger.warning(f"初期RAGコンテキスト取得に失敗: {e}")
         if self.carry_over_context:
             context_parts.extend([
                 "\n前回の会議からの持ち越し事項",
                 self.carry_over_context,
             ])
-        context_parts.append("\n各参加者は、自身の専門性や割り当てられたペルソナに基づいて、建設的な意見交換を日本語で行ってください。")
+        context_parts.append(
+            "\n各参加者は、自身の専門性や割り当てられたペルソナに基づいて、建設的な意見交換を日本語で行ってください。"
+        )
         return "\n".join(context_parts)
 
     def _build_statement_prompt(
