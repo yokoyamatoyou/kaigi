@@ -94,6 +94,7 @@ class MultiAIResearchApp:
         )
         self.file_status_text = ft.Text("ファイルが選択されていません", size=12)
 
+        # デフォルトで「なし」を選択肢に追加（持ち越し事項を読み込まない場合）
         carry_over_options = [ft.dropdown.Option(key="none", text="なし")]
         for ctx in self.context_manager.list_carry_overs():
             carry_over_options.append(
