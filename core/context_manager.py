@@ -88,9 +88,17 @@ class ContextManager:
         filepath = os.path.join(self.context_dir, context_id)
         if not os.path.exists(filepath):
             return None
-        with open(filepath, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
             return data.get("unresolved_issues")
+        except (json.JSONDecodeError, OSError):
+            # ファイルが壊れている場合は削除してNoneを返す
+            try:
+                os.remove(filepath)
+            except OSError:
+                pass
+            return None
 
 
 _default_manager = ContextManager()

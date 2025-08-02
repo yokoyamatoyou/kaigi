@@ -40,3 +40,12 @@ def test_skip_and_remove_invalid(tmp_path, monkeypatch):
     contexts = manager.list_carry_overs(remove_invalid=True)
     assert len(contexts) == 1
     assert not invalid_file.exists()
+
+
+def test_load_invalid_file_returns_none_and_removes(tmp_path):
+    manager = ContextManager(context_dir=str(tmp_path))
+    bad = tmp_path / "bad.json"
+    bad.write_text("{bad", encoding="utf-8")
+
+    assert manager.load_carry_over("bad.json") is None
+    assert not bad.exists()
