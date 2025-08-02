@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import logging
 import time
 from typing import Optional
 
 from openai import APIError, OpenAI
+
+
+logger = logging.getLogger(__name__)
 
 
 class PersonaEnhancer:
@@ -83,14 +87,17 @@ class PersonaEnhancer:
                 return response.choices[0].message.content.strip()
             except APIError as e:
                 wait_time = 2 ** (attempt - 1)
-                print(
-                    f"OpenAI API error during persona enhancement (attempt {attempt}/{max_retries}): {e}"
+                logger.warning(
+                    "OpenAI API error during persona enhancement (attempt %d/%d): %s",
+                    attempt,
+                    max_retries,
+                    e,
                 )
-            except Exception as e:
+            except Exception:
                 # Catch-all for unexpected issues; do not retry.
-                print(f"ペルソナ強化中にエラー: {e}")
+                logger.exception("ペルソナ強化中にエラー")
                 break
             if attempt < max_retries:
                 time.sleep(wait_time)
-        print("Falling back to base persona after repeated failures.")
+        logger.error("Falling back to base persona after repeated failures.")
         return base_persona
