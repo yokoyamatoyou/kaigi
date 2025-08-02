@@ -17,6 +17,7 @@ from .document_processor import DocumentProcessor
 from .utils import Timer, format_duration, sanitize_filename
 from .config_manager import get_config_manager
 from .context_manager import ContextManager
+from .persona_enhancer import PersonaEnhancer
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +127,38 @@ class MeetingManager:
         except Exception as e:
             self._report_error(f"参加者初期化プロセス全体で予期せぬエラー: {e}", exc_info=True)
             return False
+
+    async def _enhance_personas(self, topic: str, document_summary: Optional[DocumentSummary]):
+        """OpenAIを用いて参加者および司会者のペルソナを強化する。"""
+        api_key = self.config_manager.config.openai_api_key
+        if not api_key:
+            logger.info("OpenAI APIキーが未設定のため、ペルソナ強化をスキップします。")
+            return
+        try:
+            enhancer = PersonaEnhancer(api_key=api_key)
+        except Exception as e:
+            logger.warning(f"PersonaEnhancerの初期化に失敗: {e}")
+            return
+        document_context = (
+            document_summary.summary
+            if document_summary and document_summary.summary
+            else None
+        )
+        targets: List[ParticipantInfo] = list(self.participants.values())
+        if self.moderator:
+            targets.append(self.moderator)
+        for participant in targets:
+            try:
+                enhanced = await asyncio.to_thread(
+                    enhancer.enhance_persona,
+                    participant.persona,
+                    topic,
+                    document_context,
+                )
+                if enhanced:
+                    participant.persona = enhanced.strip()
+            except Exception as e:
+                logger.warning(f"{participant.name}のペルソナ強化に失敗: {e}")
 
     def _extract_content_and_tokens(self, provider: AIProvider, response: Any) -> Tuple[str, int]:
         content = ""
@@ -247,6 +280,8 @@ class MeetingManager:
                 if settings.document_path:
                     self._update_phase("processing_document")
                     document_summary_obj = await self._process_document(settings.document_path)
+                self._update_phase("enhancing_personas")
+                await self._enhance_personas(settings.user_query, document_summary_obj)
 
                 self._update_phase("discussing")
                 await self._conduct_meeting(settings, document_summary_obj)
