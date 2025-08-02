@@ -47,13 +47,14 @@ class FakeEmbeddings(Embeddings):
 
 
 def test_save_and_load(tmp_path):
-    manager = VectorStoreManager(openai_api_key="test")
+    save_path = tmp_path / "store"
     fake = FakeEmbeddings()
-    manager.embeddings = fake
+    manager = VectorStoreManager(
+        openai_api_key="test", persist_path=str(save_path), embeddings=fake
+    )
     texts = ["hello world", "foo bar"]
     manager.vector_store = FAISS.from_texts(texts, embedding=fake)
-    save_path = tmp_path / "store"
-    manager.save_to_disk(str(save_path))
+    manager.save_to_disk()
 
     new_manager = VectorStoreManager(
         openai_api_key="test", persist_path=str(save_path), embeddings=fake
