@@ -55,8 +55,8 @@ def test_save_and_load(tmp_path):
     save_path = tmp_path / "store"
     manager.save_to_disk(str(save_path))
 
-    new_manager = VectorStoreManager(openai_api_key="test")
-    new_manager.embeddings = fake
-    new_manager.load_from_disk(str(save_path))
+    new_manager = VectorStoreManager(
+        openai_api_key="test", persist_path=str(save_path), embeddings=fake
+    )
     results = new_manager.get_relevant_documents("hello", k=1)
     assert results == ["hello world"]
