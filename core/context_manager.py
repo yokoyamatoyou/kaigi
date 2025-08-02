@@ -11,6 +11,34 @@ class ContextManager:
         self.context_dir = context_dir
         if not os.path.exists(self.context_dir):
             os.makedirs(self.context_dir)
+        # Remove any corrupted context files at startup
+        self.cleanup_invalid_contexts()
+
+    def cleanup_invalid_contexts(self, remove: bool = True) -> List[str]:
+        """Validate stored contexts and optionally remove corrupted files.
+
+        Args:
+            remove (bool): Whether to delete corrupted JSON files.
+
+        Returns:
+            List[str]: Filenames identified as invalid.
+        """
+        invalid_files: List[str] = []
+        for filename in os.listdir(self.context_dir):
+            if not filename.endswith(".json"):
+                continue
+            filepath = os.path.join(self.context_dir, filename)
+            try:
+                with open(filepath, "r", encoding="utf-8") as f:
+                    json.load(f)
+            except (json.JSONDecodeError, OSError):
+                invalid_files.append(filename)
+                if remove:
+                    try:
+                        os.remove(filepath)
+                    except OSError:
+                        pass
+        return invalid_files
 
     def save_carry_over(self, topic: str, unresolved_issues: str) -> None:
         """未解決の課題をJSONファイルとして保存する。"""
@@ -30,23 +58,29 @@ class ContextManager:
             json.dump(data, f, ensure_ascii=False, indent=4)
         print(f"持ち越し事項を {filepath} に保存しました。")
 
-    def list_carry_overs(self) -> List[Dict[str, str]]:
+    def list_carry_overs(self, remove_invalid: bool = False) -> List[Dict[str, str]]:
         """保存されている持ち越し事項のリストを取得する。"""
-        contexts = []
+        contexts: List[Dict[str, str]] = []
         for filename in sorted(os.listdir(self.context_dir), reverse=True):
-            if filename.endswith(".json"):
-                filepath = os.path.join(self.context_dir, filename)
+            if not filename.endswith(".json"):
+                continue
+            filepath = os.path.join(self.context_dir, filename)
+            try:
                 with open(filepath, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                contexts.append(
+                    {
+                        "id": filename,
+                        "display_name": f"[{data['created_at']}] {data['topic']}",
+                    }
+                )
+            except (json.JSONDecodeError, OSError):
+                if remove_invalid:
                     try:
-                        data = json.load(f)
-                        contexts.append(
-                            {
-                                "id": filename,
-                                "display_name": f"[{data['created_at']}] {data['topic']}",
-                            }
-                        )
-                    except json.JSONDecodeError:
-                        continue
+                        os.remove(filepath)
+                    except OSError:
+                        pass
+                continue
         return contexts
 
     def load_carry_over(self, context_id: str) -> Optional[str]:
@@ -67,9 +101,9 @@ def save_carry_over(topic: str, unresolved_issues: str) -> None:
     _default_manager.save_carry_over(topic, unresolved_issues)
 
 
-def list_carry_overs() -> List[Dict[str, str]]:
+def list_carry_overs(remove_invalid: bool = False) -> List[Dict[str, str]]:
     """保存されている持ち越し事項の一覧を返す。"""
-    return _default_manager.list_carry_overs()
+    return _default_manager.list_carry_overs(remove_invalid=remove_invalid)
 
 
 def load_carry_over(context_id: str) -> Optional[str]:
