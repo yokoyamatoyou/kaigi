@@ -1,10 +1,14 @@
-from langchain_community.vectorstores import FAISS
-from langchain_openai import OpenAIEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+import faiss  # noqa: F401
+import numpy as np  # noqa: F401
 from typing import List, Optional
 
-from .document_processor import DocumentProcessor
+from langchain.docstore.document import Document
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.vectorstores import FAISS
+from langchain_openai import OpenAIEmbeddings
+
 from .config_manager import ConfigManager
+from .document_processor import DocumentProcessor
 
 
 class VectorStoreManager:
@@ -28,8 +32,10 @@ class VectorStoreManager:
             if not text:
                 self.vector_store = None
                 return
-            chunks = self.text_splitter.split_text(text)
-            self.vector_store = FAISS.from_texts(texts=chunks, embedding=self.embeddings)
+
+            document = Document(page_content=text, metadata=result.metadata)
+            docs = self.text_splitter.split_documents([document])
+            self.vector_store = FAISS.from_documents(docs, embedding=self.embeddings)
             print("ベクトルストアの構築が完了しました。")
         except Exception as e:
             print(f"ベクトルストアの構築中にエラーが発生しました: {e}")
