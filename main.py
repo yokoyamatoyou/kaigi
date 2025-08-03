@@ -51,7 +51,7 @@ class MultiAIResearchApp(ComponentsMixin, EventsMixin):
 
 
 async def main(page: ft.Page):
-    app = MultiAIResearchApp(page)
+    MultiAIResearchApp(page)
 
 
 if __name__ == "__main__":
