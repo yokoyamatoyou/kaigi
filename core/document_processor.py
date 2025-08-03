@@ -336,19 +336,20 @@ class DocumentProcessor:
     ) -> DocumentSummary:
         target_token_count = self.config.summarization_target_tokens # AppConfigから取得
         tokens_used_total = 0 # 要約に使用した総トークン数を追跡
+        token_count = count_tokens(text, summarizer_ai_client.model_info.name)
 
         try:
             with Timer("ドキュメント要約"):
                 original_length = len(text)
-                
-                if count_tokens(text, summarizer_ai_client.model_info.name) <= target_token_count:
+
+                if token_count <= target_token_count:
                     logger.info("テキストが十分短いため、要約をスキップします")
                     return DocumentSummary(
                         original_length=original_length, summary=text,
                         summary_length=len(text), compression_ratio=1.0, tokens_used=0
                     )
-                
-                if count_tokens(text, summarizer_ai_client.model_info.name) > 4000: # 閾値は適宜調整
+
+                if token_count > 4000: # 閾値は適宜調整
                     summary_result = await self._summarize_long_document(
                         text, summarizer_ai_client, target_token_count, style
                     )
