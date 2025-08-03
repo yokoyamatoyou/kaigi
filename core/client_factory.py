@@ -19,13 +19,13 @@ class ClientFactory:
 
     @classmethod
     def create_client(
-        self,
+        cls,
         model_info: ModelInfo,
         api_key: Optional[str] = None,
-        **kwargs: Any 
+        **kwargs: Any
     ) -> BaseAIClient:
         provider = model_info.provider
-        if provider not in self._client_classes:
+        if provider not in cls._client_classes:
             logger.error(f"サポートされていないプロバイダー試行: {provider}")
             raise ValueError(f"サポートされていないプロバイダー: {provider}")
 
@@ -38,10 +38,10 @@ class ClientFactory:
                 logger.error(f"{provider.value} APIキーが設定されていません (ConfigManagerから取得失敗)")
                 raise RuntimeError(f"{provider.value} APIキーが設定されていません")
 
-        client_class = self._client_classes[provider]
-        
+        client_class = cls._client_classes[provider]
+
         # プロバイダー固有のデフォルト引数を AppConfig から取得
-        default_provider_kwargs = self._get_default_kwargs_from_config(provider, app_config)
+        default_provider_kwargs = cls._get_default_kwargs_from_config(provider, app_config)
         
         # 渡されたkwargsでデフォルトを上書き
         final_kwargs = {**default_provider_kwargs, **kwargs}
