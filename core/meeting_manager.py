@@ -14,7 +14,13 @@ from .models import (
 from .api_clients import BaseAIClient
 from .client_factory import ClientFactory
 from .document_processor import DocumentProcessor
-from .utils import Timer, format_duration, sanitize_filename, count_tokens
+from .utils import (
+    Timer,
+    format_duration,
+    sanitize_filename,
+    count_tokens,
+    extract_content_and_tokens,
+)
 from .config_manager import get_config_manager
 from .context_manager import save_carry_over
 from .persona_enhancer import PersonaEnhancer
@@ -167,52 +173,6 @@ class MeetingManager:
             except Exception as e:
                 logger.warning(f"{participant.name}のペルソナ強化に失敗: {e}")
 
-    def _extract_content_and_tokens(self, provider: AIProvider, response: Any) -> Tuple[str, int]:
-        content = ""
-        tokens_used = 0
-        try:
-            if provider == AIProvider.OPENAI:
-                if response and hasattr(response, 'choices') and response.choices and response.choices[0].message:
-                    content = response.choices[0].message.content or ""
-                if response and hasattr(response, 'usage') and response.usage:
-                    tokens_used = response.usage.total_tokens or 0
-            elif provider == AIProvider.CLAUDE:
-                if response and hasattr(response, 'content') and isinstance(response.content, list) and len(response.content) > 0:
-                    for block in response.content:
-                        if hasattr(block, 'text'):
-                            content = block.text
-                            break
-                if response and hasattr(response, 'usage') and response.usage:
-                    tokens_used = (response.usage.input_tokens or 0) + (response.usage.output_tokens or 0)
-            elif provider == AIProvider.GEMINI:
-                if response and hasattr(response, 'candidates') and response.candidates and \
-                   hasattr(response.candidates[0], 'content') and response.candidates[0].content and \
-                   hasattr(response.candidates[0].content, 'parts') and response.candidates[0].content.parts:
-                    content = "".join(part.text for part in response.candidates[0].content.parts if hasattr(part, 'text'))
-
-                if hasattr(response, 'usage_metadata') and response.usage_metadata:
-                    tokens_used = (response.usage_metadata.prompt_token_count or 0) + \
-                                  (response.usage_metadata.candidates_token_count or 0)
-                elif hasattr(response, 'usage') and response.usage and hasattr(response.usage, 'total_tokens'):
-                     tokens_used = response.usage.total_tokens or 0
-                elif hasattr(response, 'usage') and response.usage and hasattr(response.usage, 'prompt_tokens') and hasattr(response.usage, 'completion_tokens'):
-                     tokens_used = (response.usage.prompt_tokens or 0) + \
-                                   (response.usage.completion_tokens or 0)
-                else:
-                    if not tokens_used:
-                        logger.warning(f"Geminiのレスポンスからトークン数を取得できませんでした。Response keys: {response.keys() if hasattr(response, 'keys') else type(response)}")
-            else:
-                logger.warning(f"未対応のプロバイダー ({provider}) のため、コンテンツとトークン数を抽出できません。")
-
-        except AttributeError as e:
-            logger.error(f"{provider.value}レスポンスのパース中にAttributeError: {e}. Response: {str(response)[:200]}", exc_info=True)
-            content = "[エラー: レスポンスのパースに失敗]"
-        except Exception as e:
-            logger.error(f"{provider.value}レスポンスのパース中に予期せぬエラー: {e}. Response: {str(response)[:200]}", exc_info=True)
-            content = "[エラー: レスポンスのパース中に予期せぬエラー]"
-
-        return content.strip(), tokens_used
-
     async def _ensure_japanese_output(
         self,
         text_to_check: str,
@@ -251,7 +211,7 @@ class MeetingManager:
                     user_message=correction_prompt,
                     system_message="あなたは高度な翻訳・校正AIです。指示されたテキストを完璧な日本語にしてください。"
                 )
-                corrected_text, tokens_for_correction = self._extract_content_and_tokens(
+                corrected_text, tokens_for_correction = extract_content_and_tokens(
                     original_provider, correction_response
                 )
                 if corrected_text.strip():
@@ -412,7 +372,7 @@ class MeetingManager:
                 conversation_history=api_conversation_history,
                 system_message=system_message
             )
-            content, tokens_this_call = self._extract_content_and_tokens(
+            content, tokens_this_call = extract_content_and_tokens(
                 participant.model_info.provider, raw_response
             )
             self.state.add_tokens_used(tokens_this_call)
@@ -470,7 +430,7 @@ class MeetingManager:
                 conversation_history=api_conversation_history,
                 system_message=system_message,
             )
-            content, tokens_this_call = self._extract_content_and_tokens(
+            content, tokens_this_call = extract_content_and_tokens(
                 self.moderator.model_info.provider, raw_response
             )
             self.state.add_tokens_used(tokens_this_call)
@@ -639,7 +599,7 @@ class MeetingManager:
                 override_timeout=summary_timeout,
                 override_max_tokens=self.app_config.summary_max_tokens
             )
-            content, tokens_this_call = self._extract_content_and_tokens(
+            content, tokens_this_call = extract_content_and_tokens(
                 self.moderator.model_info.provider, raw_response
             )
             self.state.add_tokens_used(tokens_this_call)
