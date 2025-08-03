@@ -1,7 +1,7 @@
 from pathlib import Path
+import logging
 from typing import List, Optional
 
-import logging
 from langchain.docstore.document import Document
 from langchain.embeddings.base import Embeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
