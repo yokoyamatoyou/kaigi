@@ -122,7 +122,7 @@ class AppConfig(BaseModel):
 
     # --- MeetingManager で参照する追加設定 ---
     summary_max_tokens: int = Field(default=4000, gt=0, description="最終要約の最大生成トークン数")
-    summary_conversation_log_max_chars: int = Field(default=15000, gt=0, description="最終要約生成時に考慮する会話ログの最大文字数")
+    summary_conversation_log_max_tokens: int = Field(default=15000, gt=0, description="最終要約生成時に考慮する会話ログの最大トークン数")
     prompt_max_length_warning_threshold: int = Field(default=20000, gt=0, description="この文字数を超えると警告を出すプロンプト長（最終要約時など）")
     # --- ここまで追加 ---
 
