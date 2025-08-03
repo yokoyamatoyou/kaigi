@@ -160,18 +160,22 @@ class MeetingManager:
         targets: List[ParticipantInfo] = list(self.participants.values())
         if self.moderator:
             targets.append(self.moderator)
-        for participant in targets:
-            try:
-                enhanced = await asyncio.to_thread(
-                    enhancer.enhance_persona,
-                    participant.persona,
-                    topic,
-                    document_context,
-                )
-                if enhanced:
-                    participant.persona = enhanced.strip()
-            except Exception as e:
-                logger.warning(f"{participant.name}のペルソナ強化に失敗: {e}")
+        tasks = [
+            asyncio.to_thread(
+                enhancer.enhance_persona,
+                participant.persona,
+                topic,
+                document_context,
+            )
+            for participant in targets
+        ]
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for participant, result in zip(targets, results):
+            if isinstance(result, Exception):
+                logger.warning(f"{participant.name}のペルソナ強化に失敗: {result}")
+            elif result:
+                participant.persona = result.strip()
 
     async def _ensure_japanese_output(
         self,
