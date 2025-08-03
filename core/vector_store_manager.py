@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import List, Optional
 
+import logging
 from langchain.docstore.document import Document
 from langchain.embeddings.base import Embeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -11,6 +12,9 @@ from .config_manager import ConfigManager
 from .document_processor import DocumentProcessor
 
 
+logger = logging.getLogger(__name__)
+
+
 class VectorStoreManager:
     """ドキュメントのテキストをベクトル化し、FAISSによる高度な検索機能を提供するクラス。"""
 
@@ -19,6 +23,7 @@ class VectorStoreManager:
         openai_api_key: str,
         persist_path: Optional[str] = None,
         embeddings: Optional[Embeddings] = None,
+        allow_dangerous_deserialization: bool = False,
     ):
         self.embeddings = embeddings or OpenAIEmbeddings(
             model="text-embedding-3-small", openai_api_key=openai_api_key
@@ -31,7 +36,9 @@ class VectorStoreManager:
         self.config_manager = ConfigManager()
 
         if self.persist_path and Path(self.persist_path).exists():
-            self.load_from_disk()
+            self.load_from_disk(
+                allow_dangerous_deserialization=allow_dangerous_deserialization
+            )
 
     def create_from_file(self, file_path: str):
         try:
@@ -45,9 +52,9 @@ class VectorStoreManager:
             document = Document(page_content=text, metadata=result.metadata)
             docs = self.text_splitter.split_documents([document])
             self.vector_store = FAISS.from_documents(docs, embedding=self.embeddings)
-            print("ベクトルストアの構築が完了しました。")
-        except Exception as e:
-            print(f"ベクトルストアの構築中にエラーが発生しました: {e}")
+            logger.info("ベクトルストアの構築が完了しました。")
+        except Exception:
+            logger.exception("ベクトルストアの構築中にエラーが発生しました")
             self.vector_store = None
 
     def create_from_text(self, text: str) -> None:
@@ -58,41 +65,54 @@ class VectorStoreManager:
                 return
             chunks = self.text_splitter.split_text(text)
             self.vector_store = FAISS.from_texts(chunks, embedding=self.embeddings)
-            print("ベクトルストアの構築が完了しました。")
-        except Exception as e:
-            print(f"ベクトルストアの構築中にエラーが発生しました: {e}")
+            logger.info("ベクトルストアの構築が完了しました。")
+        except Exception:
+            logger.exception("ベクトルストアの構築中にエラーが発生しました")
             self.vector_store = None
 
     def save_to_disk(self, path: Optional[str] = None) -> None:
         """FAISSベクトルストアをディスクに保存"""
         if not self.vector_store:
-            print("保存するベクトルストアがありません。")
+            logger.warning("保存するベクトルストアがありません。")
             return
         target_path = path or self.persist_path
         if not target_path:
-            print("保存先が指定されていません。")
+            logger.warning("保存先が指定されていません。")
             return
         try:
             Path(target_path).mkdir(parents=True, exist_ok=True)
             self.vector_store.save_local(target_path)
-            print(f"ベクトルストアを保存しました: {target_path}")
-        except Exception as e:
-            print(f"ベクトルストアの保存中にエラーが発生しました: {e}")
+            logger.info("ベクトルストアを保存しました: %s", target_path)
+        except Exception:
+            logger.exception("ベクトルストアの保存中にエラーが発生しました")
 
-    def load_from_disk(self, path: Optional[str] = None) -> None:
-        """ディスクからFAISSベクトルストアを読み込み"""
+    def load_from_disk(
+        self,
+        path: Optional[str] = None,
+        allow_dangerous_deserialization: bool = False,
+    ) -> None:
+        """ディスクからFAISSベクトルストアを読み込み。
+
+        Parameters
+        ----------
+        path: Optional[str]
+            読み込み元のパス。
+        allow_dangerous_deserialization: bool
+            True に設定すると安全でないデータのデシリアライズを許可する。
+            デフォルトは False で、信頼できるデータのみ読み込む。
+        """
         target_path = path or self.persist_path
         if not target_path:
-            print("読み込み先が指定されていません。")
+            logger.warning("読み込み先が指定されていません。")
             self.vector_store = None
             return
         try:
             self.vector_store = FAISS.load_local(
-                target_path, self.embeddings, allow_dangerous_deserialization=True
+                target_path, self.embeddings, allow_dangerous_deserialization=allow_dangerous_deserialization
             )
-            print(f"ベクトルストアを読み込みました: {target_path}")
-        except Exception as e:
-            print(f"ベクトルストアの読み込みに失敗しました: {e}")
+            logger.info("ベクトルストアを読み込みました: %s", target_path)
+        except Exception:
+            logger.exception("ベクトルストアの読み込みに失敗しました")
             self.vector_store = None
 
     def get_relevant_documents(
