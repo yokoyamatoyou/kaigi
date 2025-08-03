@@ -12,9 +12,14 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any, Callable, TypeVar, Tuple
 from pathlib import Path
 import logging
-import tiktoken
 from functools import wraps
 from .models import AIProvider
+
+# tiktoken is optional; provide a fallback if it's not installed
+try:  # pragma: no cover - import guard
+    import tiktoken  # type: ignore
+except ImportError:  # pragma: no cover - handled at runtime
+    tiktoken = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +39,10 @@ def count_tokens(text: str, model_name: str = "gpt-3.5-turbo") -> int:
     Returns:
         トークン数
     """
+    if tiktoken is None:
+        logger.warning("tiktokenがインストールされていないため、簡易的なトークン数推定を使用します。")
+        return len(text) // 4
+
     try:
         # モデル名からエンコーディングを推定
         if "gpt-4" in model_name.lower():
@@ -48,7 +57,7 @@ def count_tokens(text: str, model_name: str = "gpt-3.5-turbo") -> int:
             encoding_name = "cl100k_base"
         else:
             encoding_name = "cl100k_base"
-        
+
         encoding = tiktoken.get_encoding(encoding_name)
         return len(encoding.encode(text))
     except Exception as e:
