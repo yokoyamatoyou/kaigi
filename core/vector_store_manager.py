@@ -8,7 +8,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
 
-from .config_manager import ConfigManager
+from .config_manager import ConfigManager, get_config_manager
 from .document_processor import DocumentProcessor
 
 
@@ -24,6 +24,7 @@ class VectorStoreManager:
         persist_path: Optional[str] = None,
         embeddings: Optional[Embeddings] = None,
         allow_dangerous_deserialization: bool = False,
+        config_manager: Optional[ConfigManager] = None,
     ):
         self.embeddings = embeddings or OpenAIEmbeddings(
             model="text-embedding-3-small", openai_api_key=openai_api_key
@@ -33,7 +34,7 @@ class VectorStoreManager:
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000, chunk_overlap=200
         )
-        self.config_manager = ConfigManager()
+        self.config_manager = config_manager or get_config_manager()
 
         if self.persist_path and Path(self.persist_path).exists():
             self.load_from_disk(
