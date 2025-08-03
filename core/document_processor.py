@@ -1,20 +1,17 @@
-import re
 import logging
-from pathlib import Path
-from typing import Optional, Dict, Any, List, Tuple
+import re
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
-# ドキュメント処理ライブラリ
 import docx
-from docx.document import Document
-import PyPDF2
 import mammoth
+import PyPDF2
 
-# 独自モジュール
-from .models import FileInfo, DocumentSummary, ModelInfo, AppConfig, AIProvider # AppConfig をインポート
 from .api_clients import BaseAIClient
-from .utils import count_tokens, chunk_text, Timer, extract_content_and_tokens
+from .models import AppConfig, DocumentSummary, FileInfo  # AppConfig をインポート
+from .utils import Timer, chunk_text, count_tokens, extract_content_and_tokens
 
 logger = logging.getLogger(__name__)
 
