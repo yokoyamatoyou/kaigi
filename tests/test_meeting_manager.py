@@ -202,7 +202,7 @@ async def test_carry_over_created(tmp_path, monkeypatch):
     async def fake_ensure(content, client, provider, context_for_correction):
         return content, 0
 
-    monkeypatch.setattr(manager, "_extract_content_and_tokens", fake_extract)
+    monkeypatch.setattr(meeting_manager, "extract_content_and_tokens", fake_extract)
     monkeypatch.setattr(manager, "_ensure_japanese_output", fake_ensure)
     monkeypatch.setattr(manager, "_format_conversation_for_summary", lambda: "log")
     monkeypatch.setattr(manager, "_build_summary_prompt", lambda u, c, d: "prompt")

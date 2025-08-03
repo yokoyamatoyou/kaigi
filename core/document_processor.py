@@ -15,7 +15,7 @@ import mammoth
 # 独自モジュール
 from .models import FileInfo, DocumentSummary, ModelInfo, AppConfig, AIProvider # AppConfig をインポート
 from .api_clients import BaseAIClient
-from .utils import count_tokens, chunk_text, Timer, sanitize_filename
+from .utils import count_tokens, chunk_text, Timer, sanitize_filename, extract_content_and_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -263,70 +263,6 @@ class DocumentProcessor:
             file_type=file_type_literal, size_bytes=path.stat().st_size
         )
 
-    def _extract_content_and_tokens(self, provider: AIProvider, response: Any) -> Tuple[str, int]:
-        """Extract text content and token usage from an AI response.
-
-        Args:
-            provider: The AI provider that generated the response.
-            response: Raw response object returned by the provider client.
-
-        Returns:
-            A tuple of the extracted content and total tokens used.
-        """
-        content = ""
-        tokens_used = 0
-        try:
-            if provider == AIProvider.OPENAI:
-                if response and hasattr(response, 'choices') and response.choices and response.choices[0].message:
-                    content = response.choices[0].message.content or ""
-                if response and hasattr(response, 'usage') and response.usage:
-                    tokens_used = response.usage.total_tokens or 0
-            elif provider == AIProvider.CLAUDE:
-                if response and hasattr(response, 'content') and isinstance(response.content, list) and len(response.content) > 0:
-                    for block in response.content:
-                        if hasattr(block, 'text'):
-                            content = block.text
-                            break
-                if response and hasattr(response, 'usage') and response.usage:
-                    tokens_used = (response.usage.input_tokens or 0) + (response.usage.output_tokens or 0)
-            elif provider == AIProvider.GEMINI:
-                if response and hasattr(response, 'candidates') and response.candidates and \
-                   hasattr(response.candidates[0], 'content') and response.candidates[0].content and \
-                   hasattr(response.candidates[0].content, 'parts') and response.candidates[0].content.parts:
-                    content = "".join(part.text for part in response.candidates[0].content.parts if hasattr(part, 'text'))
-
-                if hasattr(response, 'usage_metadata') and response.usage_metadata:
-                    tokens_used = (response.usage_metadata.prompt_token_count or 0) + \
-                                  (response.usage_metadata.candidates_token_count or 0)
-                elif hasattr(response, 'usage') and response.usage and hasattr(response.usage, 'total_tokens'):
-                    tokens_used = response.usage.total_tokens or 0
-                elif hasattr(response, 'usage') and response.usage and hasattr(response.usage, 'prompt_tokens') and hasattr(response.usage, 'completion_tokens'):
-                    tokens_used = (response.usage.prompt_tokens or 0) + \
-                                   (response.usage.completion_tokens or 0)
-                else:
-                    if not tokens_used:
-                        logger.warning(
-                            f"Geminiのレスポンスからトークン数を取得できませんでした。Response keys: {response.keys() if hasattr(response, 'keys') else type(response)}"
-                        )
-            else:
-                logger.warning(
-                    f"未対応のプロバイダー ({provider}) のため、コンテンツとトークン数を抽出できません。"
-                )
-
-        except AttributeError as e:
-            logger.error(
-                f"{provider.value}レスポンスのパース中にAttributeError: {e}. Response: {str(response)[:200]}",
-                exc_info=True,
-            )
-            content = "[エラー: レスポンスのパースに失敗]"
-        except Exception as e:
-            logger.error(
-                f"{provider.value}レスポンスのパース中に予期せぬエラー: {e}. Response: {str(response)[:200]}",
-                exc_info=True,
-            )
-
-        return content, tokens_used
-    
     async def summarize_document_for_meeting(
         self,
         text: str,
@@ -360,7 +296,7 @@ class DocumentProcessor:
                 response = await summarizer_ai_client.request_completion(
                     user_message=prompt, system_message="あなたは専門的な文書要約の専門家です。"
                 )
-                summary, tokens_used = self._extract_content_and_tokens(
+                summary, tokens_used = extract_content_and_tokens(
                     summarizer_ai_client.model_info.provider, response
                 )
                 tokens_used_total += tokens_used
@@ -400,7 +336,7 @@ class DocumentProcessor:
             response = await summarizer_ai_client.request_completion(
                 user_message=chunk_prompt, system_message="あなたは文書要約の専門家です。"
             )
-            content, tokens_used = self._extract_content_and_tokens(
+            content, tokens_used = extract_content_and_tokens(
                 summarizer_ai_client.model_info.provider, response
             )
             tokens_used_total += tokens_used
@@ -412,7 +348,7 @@ class DocumentProcessor:
         response = await summarizer_ai_client.request_completion(
             user_message=final_prompt, system_message="あなたは文書要約の専門家です。"
         )
-        final_summary, tokens_used = self._extract_content_and_tokens(
+        final_summary, tokens_used = extract_content_and_tokens(
             summarizer_ai_client.model_info.provider, response
         )
         tokens_used_total += tokens_used

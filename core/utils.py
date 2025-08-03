@@ -9,11 +9,12 @@ import time
 import hashlib
 import json
 from datetime import datetime
-from typing import Optional, List, Dict, Any, Callable, TypeVar
+from typing import Optional, List, Dict, Any, Callable, TypeVar, Tuple
 from pathlib import Path
 import logging
 import tiktoken
 from functools import wraps
+from .models import AIProvider
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +154,91 @@ def generate_file_hash(file_path: str) -> str:
     except Exception as e:
         logger.error(f"ファイルハッシュ生成に失敗: {e}")
         return ""
+
+
+def extract_content_and_tokens(provider: AIProvider, response: Any) -> Tuple[str, int]:
+    """Extract text content and token usage from an AI response."""
+    content = ""
+    tokens_used = 0
+    try:
+        if provider == AIProvider.OPENAI:
+            if response and hasattr(response, "choices") and response.choices and getattr(response.choices[0], "message", None):
+                content = response.choices[0].message.content or ""
+            if response and hasattr(response, "usage") and response.usage:
+                tokens_used = getattr(response.usage, "total_tokens", 0) or 0
+        elif provider == AIProvider.CLAUDE:
+            if (
+                response
+                and hasattr(response, "content")
+                and isinstance(response.content, list)
+                and len(response.content) > 0
+            ):
+                for block in response.content:
+                    if hasattr(block, "text"):
+                        content = block.text
+                        break
+            if response and hasattr(response, "usage") and response.usage:
+                tokens_used = (getattr(response.usage, "input_tokens", 0) or 0) + (
+                    getattr(response.usage, "output_tokens", 0) or 0
+                )
+        elif provider == AIProvider.GEMINI:
+            if (
+                response
+                and hasattr(response, "candidates")
+                and response.candidates
+                and hasattr(response.candidates[0], "content")
+                and response.candidates[0].content
+                and hasattr(response.candidates[0].content, "parts")
+                and response.candidates[0].content.parts
+            ):
+                content = "".join(
+                    part.text for part in response.candidates[0].content.parts if hasattr(part, "text")
+                )
+
+            if hasattr(response, "usage_metadata") and response.usage_metadata:
+                tokens_used = (
+                    getattr(response.usage_metadata, "prompt_token_count", 0) or 0
+                ) + (
+                    getattr(response.usage_metadata, "candidates_token_count", 0) or 0
+                )
+            elif (
+                hasattr(response, "usage")
+                and response.usage
+                and hasattr(response.usage, "total_tokens")
+            ):
+                tokens_used = getattr(response.usage, "total_tokens", 0) or 0
+            elif (
+                hasattr(response, "usage")
+                and response.usage
+                and hasattr(response.usage, "prompt_tokens")
+                and hasattr(response.usage, "completion_tokens")
+            ):
+                tokens_used = (
+                    getattr(response.usage, "prompt_tokens", 0) or 0
+                ) + (getattr(response.usage, "completion_tokens", 0) or 0)
+            elif tokens_used == 0:
+                logger.warning(
+                    "Geminiのレスポンスからトークン数を取得できませんでした。Response keys: %s",
+                    response.keys() if hasattr(response, "keys") else type(response),
+                )
+        else:
+            logger.warning(
+                f"未対応のプロバイダー ({provider}) のため、コンテンツとトークン数を抽出できません。"
+            )
+
+    except AttributeError as e:
+        logger.error(
+            f"{provider.value}レスポンスのパース中にAttributeError: {e}. Response: {str(response)[:200]}",
+            exc_info=True,
+        )
+        content = "[エラー: レスポンスのパースに失敗]"
+    except Exception as e:
+        logger.error(
+            f"{provider.value}レスポンスのパース中に予期せぬエラー: {e}. Response: {str(response)[:200]}",
+            exc_info=True,
+        )
+
+    return content.strip(), tokens_used
 
 
 def retry_with_exponential_backoff(

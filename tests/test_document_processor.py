@@ -1,5 +1,6 @@
 from core.document_processor import DocumentProcessor
 from core.models import AppConfig, ModelInfo, AIProvider
+from core.utils import extract_content_and_tokens
 from types import SimpleNamespace
 import pytest
 
@@ -75,8 +76,7 @@ class DummyClient:
     TEST_CASES,
 )
 def test_extract_content_and_tokens(provider, response, expected_tokens, expected_content):
-    processor = DocumentProcessor(AppConfig())
-    content, tokens = processor._extract_content_and_tokens(provider, response)
+    content, tokens = extract_content_and_tokens(provider, response)
     assert content == expected_content
     assert tokens == expected_tokens
 
