@@ -386,7 +386,7 @@ class MultiAIResearchApp:
                 file_hash = generate_file_hash(self.uploaded_file_path)
                 store_path = store_root / file_hash
                 self.vector_store_manager = VectorStoreManager(
-                    openai_key, str(store_path)
+                    openai_key, str(store_path), config_manager=self.config_manager
                 )
                 if not self.vector_store_manager.vector_store:
                     await asyncio.to_thread(

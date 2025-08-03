@@ -3,6 +3,7 @@ from langchain.docstore.document import Document
 from langchain_community.vectorstores import FAISS
 from langchain.embeddings.base import Embeddings
 
+from core.config_manager import get_config_manager
 from core.vector_store_manager import VectorStoreManager
 
 
@@ -19,7 +20,7 @@ class DummyVectorStore:
 
 
 def test_mmr_diversity_and_reproducibility():
-    manager = VectorStoreManager(openai_api_key="test")
+    manager = VectorStoreManager(openai_api_key="test", config_manager=get_config_manager())
     manager.vector_store = DummyVectorStore()
 
     # Similarity search produces duplicate results
