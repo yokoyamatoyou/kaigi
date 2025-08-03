@@ -632,7 +632,6 @@ class MeetingManager:
             return f"（最終要約生成エラー: {type(e).__name__} が発生しました。詳細はログを確認してください。）"
 
     def _format_conversation_for_summary(self) -> str:
-        formatted_lines = []
         if not self.state.conversation_history: return "（会議中に発言はありませんでした）"
 
         max_tokens = self.app_config.summary_conversation_log_max_tokens
