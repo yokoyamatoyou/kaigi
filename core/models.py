@@ -57,20 +57,25 @@ class DocumentSummary(BaseModel):
     """ドキュメント要約の結果"""
     original_length: int = Field(..., description="元テキストの文字数")
     summary: str = Field(..., description="要約テキスト")
+    summary_length: int = Field(default=0, description="要約文字数")
     compression_ratio: float = Field(default=0.0, description="圧縮率") # デフォルト値設定
     tokens_used: int = Field(default=0, description="要約に使用されたトークン数")
 
     @field_validator('summary')
-    def _set_summary_length_if_needed(cls, v):
+    def _set_summary_length_if_needed(cls, v, info: ValidationInfo):
+        info.data['summary_length'] = len(v) if v else 0
         return v
 
     @field_validator('compression_ratio', mode='before')
     def calculate_compression_ratio(cls, v, info: ValidationInfo):
         original_length = info.data.get('original_length')
-        summary_text = info.data.get('summary', '')
-        summary_length_val = len(summary_text)
+        summary_length_val = info.data.get('summary_length')
+        if summary_length_val is None:
+            summary_text = info.data.get('summary', '')
+            summary_length_val = len(summary_text)
+            info.data['summary_length'] = summary_length_val
 
-        if original_length and original_length > 0 and summary_length_val > 0 :
+        if original_length and original_length > 0 and summary_length_val > 0:
             return summary_length_val / original_length
         return 0.0
 
