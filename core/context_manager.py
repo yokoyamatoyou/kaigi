@@ -1,7 +1,11 @@
 import os
 import json
+import logging
 from datetime import datetime
 from typing import List, Dict, Optional
+
+
+logger = logging.getLogger(__name__)
 
 
 class ContextManager:
@@ -31,19 +35,22 @@ class ContextManager:
             try:
                 with open(filepath, "r", encoding="utf-8") as f:
                     json.load(f)
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as e:
                 invalid_files.append(filename)
+                logger.warning("Invalid context file %s: %s", filepath, e)
                 if remove:
                     try:
                         os.remove(filepath)
-                    except OSError:
-                        pass
+                    except OSError as remove_error:
+                        logger.error(
+                            "Failed to remove invalid context file %s: %s", filepath, remove_error
+                        )
         return invalid_files
 
     def save_carry_over(self, topic: str, unresolved_issues: str) -> None:
         """未解決の課題をJSONファイルとして保存する。"""
         if not unresolved_issues.strip():
-            print("持ち越し事項がないため、保存をスキップしました。")
+            logger.info("持ち越し事項がないため、保存をスキップしました。")
             return
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -56,7 +63,7 @@ class ContextManager:
         }
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
-        print(f"持ち越し事項を {filepath} に保存しました。")
+        logger.info("持ち越し事項を %s に保存しました。", filepath)
 
     def list_carry_overs(self, remove_invalid: bool = False) -> List[Dict[str, str]]:
         """保存されている持ち越し事項のリストを取得する。"""
@@ -74,12 +81,15 @@ class ContextManager:
                         "display_name": f"[{data['created_at']}] {data['topic']}",
                     }
                 )
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as e:
+                logger.warning("Invalid context file %s: %s", filepath, e)
                 if remove_invalid:
                     try:
                         os.remove(filepath)
-                    except OSError:
-                        pass
+                    except OSError as remove_error:
+                        logger.error(
+                            "Failed to remove invalid context file %s: %s", filepath, remove_error
+                        )
                 continue
         return contexts
 
@@ -92,12 +102,15 @@ class ContextManager:
             with open(filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
             return data.get("unresolved_issues")
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError) as e:
             # ファイルが壊れている場合は削除してNoneを返す
+            logger.warning("Failed to load context file %s: %s", filepath, e)
             try:
                 os.remove(filepath)
-            except OSError:
-                pass
+            except OSError as remove_error:
+                logger.error(
+                    "Failed to remove corrupted context file %s: %s", filepath, remove_error
+                )
             return None
 
 
