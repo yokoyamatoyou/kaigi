@@ -1,4 +1,3 @@
-import os
 import re
 import logging
 from pathlib import Path
@@ -15,7 +14,7 @@ import mammoth
 # 独自モジュール
 from .models import FileInfo, DocumentSummary, ModelInfo, AppConfig, AIProvider # AppConfig をインポート
 from .api_clients import BaseAIClient
-from .utils import count_tokens, chunk_text, Timer, sanitize_filename, extract_content_and_tokens
+from .utils import count_tokens, chunk_text, Timer, extract_content_and_tokens
 
 logger = logging.getLogger(__name__)
 
