@@ -206,8 +206,24 @@ class DocumentProcessor:
                     "file_path": file_path, "file_size": file_info.size_bytes,
                     "extraction_method": "direct_read", "extraction_timestamp": datetime.now()
                 }
-                with open(file_path, 'r', encoding='utf-8') as f: # UTF-8をデフォルトに
-                    extracted_text = f.read()
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:  # UTF-8をデフォルトに
+                        extracted_text = f.read()
+                except UnicodeDecodeError:
+                    logger.warning(f"UTF-8 decoding failed for {file_path}, attempting fallback encoding")
+                    try:
+                        import chardet  # type: ignore
+                        with open(file_path, 'rb') as fb:
+                            raw = fb.read()
+                        detected = chardet.detect(raw)
+                        fallback_encoding = detected.get('encoding') or 'utf-8'
+                        with open(file_path, 'r', encoding=fallback_encoding, errors='ignore') as f:
+                            extracted_text = f.read()
+                        logger.info(f"Fallback encoding used: {fallback_encoding}")
+                    except Exception:
+                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                            extracted_text = f.read()
+                        logger.info("Fallback encoding used: utf-8 with errors='ignore'")
                 
                 extracted_text = self._clean_extracted_text(extracted_text) # クリーニングは適用
                 metadata.update({
