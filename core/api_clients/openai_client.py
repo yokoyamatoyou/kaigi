@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 import httpx
 from openai import AsyncOpenAI, APITimeoutError as OpenAPITimeoutError, APIConnectionError as OpenAIAPIConnectionError, APIStatusError as OpenAIAPIStatusError, RateLimitError as OpenAPIRateLimitError
 

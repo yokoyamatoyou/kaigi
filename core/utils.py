@@ -9,7 +9,7 @@ import time
 import hashlib
 import json
 from datetime import datetime
-from typing import Optional, List, Dict, Any, Callable, TypeVar, Tuple
+from typing import List, Dict, Any, Callable, TypeVar, Tuple
 from pathlib import Path
 import logging
 from functools import wraps

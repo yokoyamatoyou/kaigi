@@ -1,5 +1,4 @@
 import json
-import os
 from core.config_manager import ConfigManager
 
 
