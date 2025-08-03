@@ -14,7 +14,7 @@ from .models import (
 from .api_clients import BaseAIClient
 from .client_factory import ClientFactory
 from .document_processor import DocumentProcessor
-from .utils import Timer, format_duration, sanitize_filename
+from .utils import Timer, format_duration, sanitize_filename, count_tokens
 from .config_manager import get_config_manager
 from .context_manager import save_carry_over
 from .persona_enhancer import PersonaEnhancer
@@ -671,8 +671,8 @@ class MeetingManager:
         formatted_lines = []
         if not self.state.conversation_history: return "（会議中に発言はありませんでした）"
 
-        max_chars = self.app_config.summary_conversation_log_max_chars
-        current_chars = 0
+        max_tokens = self.app_config.summary_conversation_log_max_tokens
+        current_tokens = 0
         log_to_process = []
 
         reversed_valid_entries = [
@@ -687,12 +687,13 @@ class MeetingManager:
             # バックスラッシュをf-stringの外で処理
             content_for_markdown = entry.content.replace('\n', '  \n')
             entry_text = f"- **ラウンド {entry.round_number}, {entry.speaker} (役割: {entry.persona}):**\n  {content_for_markdown}\n"
-            entry_len = len(entry_text)
-            if max_chars > 0 and current_chars + entry_len > max_chars and log_to_process:
-                log_to_process.insert(0, "... (これより前の会話は、要約生成の文字数制限のため省略されています) ...\n")
+            model_name = self.moderator.model_info.name if self.moderator else "gpt-3.5-turbo"
+            entry_tokens = count_tokens(entry_text, model_name)
+            if max_tokens > 0 and current_tokens + entry_tokens > max_tokens and log_to_process:
+                log_to_process.insert(0, "... (これより前の会話は、要約生成のトークン数制限のため省略されています) ...\n")
                 break
             log_to_process.insert(0, entry_text)
-            current_chars += entry_len
+            current_tokens += entry_tokens
 
         if not log_to_process: return "（会議中に有効な発言はありませんでした）"
 
