@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 import httpx
 import anthropic
 from anthropic import APITimeoutError, APIConnectionError, RateLimitError, APIStatusError

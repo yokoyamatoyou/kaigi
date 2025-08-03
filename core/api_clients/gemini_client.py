@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Optional
 import google.generativeai as genai
 # Content と Part の直接インポートを削除 (またはコメントアウト)
 # from google.generativeai.types import Content, Part
-from google.generativeai.types import GenerationConfig, HarmCategory, HarmBlockThreshold # これらは通常存在
+from google.generativeai.types import HarmCategory, HarmBlockThreshold # これらは通常存在
 from google.api_core import exceptions as google_exceptions
 
 from .base_client import BaseAIClient

@@ -1,4 +1,3 @@
-import pytest
 from langchain.docstore.document import Document
 from langchain_community.vectorstores import FAISS
 from langchain.embeddings.base import Embeddings
