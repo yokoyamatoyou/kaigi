@@ -94,4 +94,5 @@ async def test_summarize_document_for_meeting_with_various_providers(provider, r
     summary = await processor.summarize_document_for_meeting(text, client)
     assert summary.summary == expected_content
     assert summary.tokens_used == expected_tokens
+    assert summary.summary_length == len(expected_content)
 
