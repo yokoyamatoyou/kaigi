@@ -63,7 +63,7 @@ class ComponentsMixin:
         self.carry_over_info_text = ft.Text("", size=12)
         self.carry_over_banner = ft.Container(
             content=self.carry_over_info_text,
-            bgcolor=ft.colors.AMBER_100,
+            bgcolor=ft.Colors.AMBER_100,
             padding=ft.padding.symmetric(vertical=5, horizontal=10),
             border_radius=5,
             visible=False,
